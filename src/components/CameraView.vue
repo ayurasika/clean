@@ -10,6 +10,7 @@ const roomStore = useRoomStore()
 
 const videoRef = ref(null)
 const canvasRef = ref(null)
+const fileInputRef = ref(null)
 const stream = ref(null)
 const capturedImage = ref(null)
 
@@ -60,6 +61,44 @@ const capturePhoto = () => {
   generateFutureImage()
 }
 
+// ファイル選択ダイアログを開く
+const openFileSelector = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.click()
+  }
+}
+
+// ファイルが選択された時の処理
+const handleFileSelect = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  // 画像ファイルかチェック
+  if (!file.type.startsWith('image/')) {
+    alert('画像ファイルを選択してください')
+    return
+  }
+
+  // FileReaderでBase64に変換
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    capturedImage.value = e.target.result
+    stopCamera()
+
+    console.log('ファイルから画像を読み込みました:', file.name)
+
+    // STEP 1: 未来予想図を生成（カメラ撮影と同じ処理）
+    generateFutureImage()
+  }
+  reader.onerror = () => {
+    alert('ファイルの読み込みに失敗しました')
+  }
+  reader.readAsDataURL(file)
+
+  // input をリセット（同じファイルを再選択できるように）
+  event.target.value = ''
+}
+
 // カメラを停止
 const stopCamera = () => {
   if (stream.value) {
@@ -90,6 +129,33 @@ const generateFutureImage = async () => {
     console.error('未来予想図生成エラー:', error)
     alert('エラーが発生しました。再度お試しください。')
     resetToCamera()
+  }
+}
+
+// 再生成: もっと綺麗な未来予想図を生成（より強力なプロンプト使用）
+const regenerateFutureImage = async () => {
+  if (!capturedImage.value) return
+
+  currentPhase.value = 'generating'
+
+  try {
+    // isRegenerate = true で より強力なプロンプトを使用
+    const result = await generateFutureVision(capturedImage.value, true)
+
+    if (result.success) {
+      futureVisionUrl.value = result.imageUrl
+      roomStore.setFutureVisionUrl(result.imageUrl)
+      currentPhase.value = 'vision'
+      console.log('未来予想図を再生成しました')
+    } else {
+      console.error('再生成に失敗:', result.error)
+      alert('再生成に失敗しました。もう一度お試しください。')
+      currentPhase.value = 'vision'
+    }
+  } catch (error) {
+    console.error('再生成エラー:', error)
+    alert('エラーが発生しました。')
+    currentPhase.value = 'vision'
   }
 }
 
@@ -320,7 +386,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 片付けを始めるボタン -->
+          <!-- ボタンエリア -->
           <div class="bg-black p-6">
             <button
               @click="analyzeSpots"
@@ -328,12 +394,23 @@ onUnmounted(() => {
             >
               片付ける！
             </button>
-            <button
-              @click="resetToCamera"
-              class="w-full mt-3 py-3 bg-gray-800 text-gray-300 rounded-xl font-medium"
-            >
-              撮り直す
-            </button>
+            <div class="flex gap-3 mt-3">
+              <button
+                @click="regenerateFutureImage"
+                class="flex-1 py-3 bg-purple-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                もっと綺麗に
+              </button>
+              <button
+                @click="resetToCamera"
+                class="flex-1 py-3 bg-gray-800 text-gray-300 rounded-xl font-medium"
+              >
+                撮り直す
+              </button>
+            </div>
           </div>
         </div>
 
@@ -503,15 +580,41 @@ onUnmounted(() => {
         v-if="currentPhase === 'camera'"
         class="absolute bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 p-6"
       >
-        <div class="flex justify-center items-center">
+        <!-- 隠しファイル入力 -->
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept="image/*"
+          class="hidden"
+          @change="handleFileSelect"
+        />
+
+        <div class="flex justify-center items-center gap-8">
+          <!-- ファイル選択ボタン -->
+          <button
+            @click="openFileSelector"
+            class="w-14 h-14 rounded-full bg-gray-700 border-2 border-gray-500 flex items-center justify-center shadow-lg hover:bg-gray-600 transition-colors"
+            title="ファイルから選択"
+          >
+            <svg class="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+
+          <!-- 撮影ボタン -->
           <button
             @click="capturePhoto"
             class="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
           >
             <div class="w-16 h-16 rounded-full bg-white border-2 border-gray-400"></div>
           </button>
+
+          <!-- スペーサー（バランス用） -->
+          <div class="w-14 h-14"></div>
         </div>
+
         <p class="text-center text-gray-400 text-sm mt-4">部屋全体が映るように撮影してください</p>
+        <p class="text-center text-gray-500 text-xs mt-1">または左のボタンでファイルから選択</p>
       </div>
     </div>
   </div>

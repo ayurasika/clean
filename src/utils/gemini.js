@@ -13,7 +13,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001
  * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
  * @returns {Promise<Object>} 生成された画像情報
  */
-export async function generateFutureVision(imageBase64) {
+export async function generateFutureVision(imageBase64, isRegenerate = false) {
   try {
     const response = await fetch(`${API_BASE_URL}/api/gemini/edit-image`, {
       method: 'POST',
@@ -22,7 +22,7 @@ export async function generateFutureVision(imageBase64) {
       },
       body: JSON.stringify({
         imageBase64: imageBase64,
-        editType: 'future_vision',
+        editType: isRegenerate ? 'future_vision_stronger' : 'future_vision',
       }),
     })
 

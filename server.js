@@ -145,34 +145,180 @@ app.post('/api/gemini/edit-image', async (req, res) => {
     // Base64データからプレフィックスを除去
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
 
-    // より強力な編集プロンプト
-    // 具体的に何を消すか、どう変えるかを明確に指示
+    // 日英ハイブリッドプロンプト（より効果的な指示）
     let editPrompt = ''
+    let temperature = 0.5 // デフォルト: 少し大胆に
+
     if (editType === 'future_vision') {
-      editPrompt = `Transform this messy room into a perfectly clean minimalist space.
+      // 通常の片付け: 温度を最大に設定（大胆な編集）
+      temperature = 1.0
+      editPrompt = `REMOVE ALL CLUTTER. ERASE everything that is not furniture.
 
-MUST REMOVE (erase completely and fill with clean texture):
-- Every single item on the floor (clothes, papers, trash, bags, boxes, anything)
-- Everything on tables and desks except one decorative item
-- All visible clutter, mess, and disorganization
+床の物 → 消す
+テーブルの上の物 → 消す
+散らかった書類 → 消す
+服や衣類 → 消す
+小物・雑貨 → 消す
+ペットボトル・食器 → 消す
 
-MUST CHANGE:
-- Floor should be 100% visible and spotless
-- All surfaces should be empty and clean
-- Create a dramatic "before and after" difference
+KEEP: 壁、床、大型家具（テーブル、椅子、棚）のみ
+DELETE: それ以外の全てのアイテム
 
-Keep the room structure, furniture positions, walls, and windows the same.
-This should look like a professional interior design photo.`
+DO NOT add anything new. Only remove.`
+    } else if (editType === 'future_vision_stronger') {
+      // 「もっと綺麗に」: 温度高め（より大胆な変換）
+      temperature = 0.7
+      editPrompt = `【ROLE】You are an EXTREME minimalist room transformation expert.
+あなたは究極のミニマリスト部屋変換専門家です。
+
+【MISSION】Make this room ULTRA CLEAN - remove EVERYTHING possible.
+この部屋を究極に綺麗に - 可能な限りすべてを消去してください。
+
+【AGGRESSIVE CLEANING RULES - 徹底清掃ルール】
+1. 床: Remove 100% of items on floor（床の物を100%消去）
+2. 棚・テーブル: Clear ALL surfaces completely（すべての面を完全にクリア）
+3. 背景: Clean background shelves and walls（背景の棚や壁も綺麗に）
+4. 隅々: Check corners and hidden areas（隅や隠れた場所もチェック）
+
+【STRICT PROHIBITION - 厳禁】
+- NO vases, NO flowers, NO plants（花瓶・花・植物禁止）
+- NO decorations, NO new furniture（装飾品・新家具禁止）
+- ONLY REMOVE, never add（消すだけ、絶対に追加しない）
+
+【GOAL】Minimalist empty room - モデルルームのような何もない状態`
     } else if (editType === 'organize') {
-      editPrompt = `Transform this room: Remove ALL items from floor. Empty all surfaces. Make it minimalist and spotless.`
+      temperature = 0.5
+      editPrompt = `Remove ALL items from the ENTIRE room - floors, tables, shelves, cabinets, background areas. Leave everything EMPTY. DO NOT add decorations. Maintain perspective.`
     } else {
-      editPrompt = `Make this room perfectly clean. Remove everything from the floor and surfaces.`
+      temperature = 0.5
+      editPrompt = `Clean the ENTIRE room by removing ALL items from ALL surfaces including background shelves. DO NOT add anything. Leave empty.`
     }
 
-    // Gemini 2.5 Flash Image API
-    // AI Studio と同じ設定: responseModalities で Image を指定
+    // ============================================================
+    // デバッグ: 画像生成の前にAIによる現状分析を実行
+    // ============================================================
+    console.log('\n🔍 === AI現状分析開始 ===')
+
+    try {
+      const analysisPrompt = `You are a professional room organizer. Analyze this photo and categorize EVERY visible item.
+
+【TASK】Classify ALL items into two categories:
+
+=== CATEGORY A: 絶対に残す（KEEP - Do NOT remove） ===
+Major furniture and appliances that are essential:
+- 大型家具: テーブル、椅子、ソファ、ベッド、棚、本棚
+- 家電: テレビ、冷蔵庫、電子レンジ、炊飯器、エアコン、照明
+- 固定設備: カーテン、時計、カレンダー
+
+=== CATEGORY B: 片付け対象（REMOVE - Should be cleaned up） ===
+Clutter and misplaced items:
+- 書類・紙類: 散らばった書類、本、ノート
+- 小物: 文房具、おもちゃ、雑貨
+- 衣類: 脱ぎ捨てた服、バッグ、帽子
+- 食器類: コップ、皿、ペットボトル
+- ゴミ: ティッシュ、包装紙、空き箱
+- ケーブル類: 乱雑なコード
+
+【OUTPUT FORMAT - 日本語で出力】
+
+■ 残すべき物（KEEP）:
+1. [場所]: [物] - 理由: [なぜ残すか]
+2. ...
+
+■ 片付けるべき物（REMOVE）:
+1. [場所]: [物] - 理由: [なぜ消すか]
+2. ...
+
+■ 判断に迷う物（UNCERTAIN）:
+1. [場所]: [物] - 理由: [なぜ迷うか]
+
+Be thorough. List EVERY visible item in one of these categories.`
+
+      const analysisResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: analysisPrompt },
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 1024,
+            },
+          }),
+        }
+      )
+
+      // 分析結果からREMOVEリストを抽出
+      let removeList = []
+
+      if (analysisResponse.ok) {
+        const analysisData = await analysisResponse.json()
+        const analysisText = analysisData.candidates?.[0]?.content?.parts?.[0]?.text || '(分析結果なし)'
+
+        console.log('\n🔍 --- AI片付け対象認識リスト ---')
+        console.log(analysisText)
+        console.log('--- 認識リスト終了 ---\n')
+
+        // REMOVEセクションから項目を抽出
+        const removeMatch = analysisText.match(/■ 片付けるべき物（REMOVE）:([\s\S]*?)(?=■|$)/)
+        if (removeMatch) {
+          const removeSection = removeMatch[1]
+          // 各行から「場所: 物」を抽出
+          const itemMatches = removeSection.matchAll(/\d+\.\s*([^:：]+)[:\：]\s*([^-\n]+)/g)
+          for (const match of itemMatches) {
+            const location = match[1].trim()
+            const item = match[2].trim()
+            removeList.push(`${location}の${item}`)
+          }
+        }
+
+        console.log('🗑️ 抽出されたREMOVEリスト:', removeList)
+      } else {
+        const errorData = await analysisResponse.json().catch(() => ({}))
+        console.log('⚠️ 現状分析APIエラー（画像生成は続行）')
+        console.log('ステータス:', analysisResponse.status)
+        console.log('エラー詳細:', JSON.stringify(errorData, null, 2))
+      }
+
+      // 分析結果をプロンプトの最初に追加（より強調）
+      if (removeList.length > 0) {
+        const removeListText = removeList.map((item, i) => `❌ ${item} → DELETE`).join('\n')
+        // プロンプトの最初に追加（先頭に持ってくる）
+        editPrompt = `🚨 MANDATORY DELETION LIST 🚨
+以下を必ず画像から消去せよ:
+${removeListText}
+
+---
+${editPrompt}`
+        console.log('📝 プロンプトの先頭にREMOVEリストを追加しました')
+        console.log('📝 追加されたアイテム数:', removeList.length)
+      }
+    } catch (analysisError) {
+      console.log('⚠️ 現状分析エラー（画像生成は続行）:', analysisError.message)
+    }
+
+    // ============================================================
+    // Gemini 2.5 Flash Image API で画像生成
+    // ============================================================
     console.log('=== 画像編集リクエスト ===')
-    console.log('プロンプト:', editPrompt)
+    console.log('editType:', editType)
+    console.log('temperature:', temperature)
+    console.log('最終プロンプト:', editPrompt.substring(0, 500) + '...')
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
@@ -199,6 +345,7 @@ This should look like a professional interior design photo.`
           ],
           generationConfig: {
             responseModalities: ['Image', 'Text'],
+            temperature: temperature,
           },
         }),
       }
@@ -441,29 +588,56 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
 
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
 
-    // 片付け場所を特定するプロンプト
-    const analyzePrompt = `この部屋の写真を分析して、片付けが必要な場所と具体的なアクションをリストアップしてください。
+    // System Instruction: プロの清掃アドバイザーとしての役割定義
+    const systemInstruction = `You are the world's best professional cleaning advisor and room organization expert.
+あなたは世界最高のプロ清掃アドバイザーであり、部屋整理の専門家です。
 
-以下のJSON形式で出力してください：
+【YOUR EXPERTISE - あなたの専門性】
+- 20年以上の片付けコンサルティング経験
+- 心理学に基づく「やる気を引き出す」アドバイス
+- 日本の住環境に精通
+- ミニマリズムと実用性のバランス感覚
+
+【YOUR PERSONALITY - あなたの特徴】
+- 温かく励ます口調
+- 具体的で実行しやすいアドバイス
+- 小さな成功体験を大切にする
+- ユーザーのペースを尊重`
+
+    // 片付け場所を特定するプロンプト（日英ハイブリッド）
+    const analyzePrompt = `【TASK】Analyze this room photo and identify cleanup spots.
+この部屋の写真を分析して、片付けが必要な場所を特定してください。
+
+【ANALYSIS CRITERIA - 分析基準】
+1. Quick wins first: すぐできて達成感が出る場所を優先
+2. Visual impact: 見た目の変化が大きい場所を重視
+3. Practical order: 実際に片付けやすい順序で提案
+
+【OUTPUT FORMAT - 出力形式】
+以下のJSON形式で出力してください（日本語で回答）：
 {
   "spots": [
     {
-      "location": "場所の名前（例：テーブルの上、床の左側、デスク周り）",
-      "items": "そこにある散らかっているもの",
-      "action": "具体的な片付けアクション",
+      "location": "場所の名前（例：テーブルの上、床の左側）",
+      "items": "散らかっているもの（具体的に）",
+      "action": "具体的な片付けアクション（「〜を〜する」形式）",
       "priority": "high/medium/low",
       "estimatedTime": "推定時間（例：2分）"
     }
   ],
   "totalEstimatedTime": "全体の推定時間",
-  "encouragement": "ユーザーを励ます一言メッセージ"
+  "encouragement": "ユーザーを励ます温かい一言（やる気が出る言葉で！）"
 }
 
-注意点：
-- 最も目立つ/簡単に片付けられる場所から順に並べる
-- 各アクションは具体的で実行しやすいものにする
-- 日本語で回答する
-- 優先度は「すぐできて達成感がある」ものをhighに`
+【PRIORITY GUIDELINES - 優先度ガイドライン】
+- high: 2分以内で完了、すぐ達成感が得られる
+- medium: 5分程度、少し手間がかかる
+- low: 10分以上、まとまった時間が必要
+
+【IMPORTANT - 重要】
+- 励ましメッセージは具体的で温かく（例：「テーブルの上から始めれば、5分後には気持ちいい空間が手に入りますよ！」）
+- アクションは「〜を〜する」の形式で具体的に
+- 3〜5個の spots を提案（多すぎると圧倒される）`
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
@@ -473,6 +647,10 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          // System Instruction を設定
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
           contents: [
             {
               parts: [
@@ -489,9 +667,10 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
             },
           ],
           generationConfig: {
-            temperature: 0.7,
-            topP: 0.95,
-            topK: 40,
+            // 分析は正確さを重視: temperature を下げる
+            temperature: 0.3,
+            topP: 0.9,
+            topK: 32,
           },
         }),
       }
