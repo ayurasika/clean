@@ -1,0 +1,165 @@
+/**
+ * Gemini API連携用のユーティリティ
+ * Google Gemini 2.0 Flash (Imagen 3) を使用して画像を編集します
+ * Image-to-Image 変換で元の部屋の構造を維持しながら綺麗にします
+ */
+
+// APIベースURL（開発環境）
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+
+/**
+ * 撮影した部屋の写真を元に、片付いた後の未来予想図を生成する
+ * Gemini の Image-to-Image 機能で元の部屋の構造を95%以上維持
+ * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
+ * @returns {Promise<Object>} 生成された画像情報
+ */
+export async function generateFutureVision(imageBase64) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/gemini/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+        editType: 'future_vision',
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      imageUrl: data.imageUrl,
+      imageBase64: data.imageBase64,
+    }
+  } catch (error) {
+    console.error('Gemini 画像編集エラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
+ * Inpainting: 部屋の写真からゴミ・散らかった物を消去して綺麗にする
+ * 元の床や壁のテクスチャを維持しながら不要なものを除去
+ * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
+ * @param {string} maskBase64 - マスク画像（オプション、消去したい部分を白で指定）
+ * @returns {Promise<Object>} 編集された画像情報
+ */
+export async function inpaintCleanRoom(imageBase64, maskBase64 = null) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/gemini/inpaint`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+        maskBase64: maskBase64,
+        editType: 'inpaint_clean',
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      imageUrl: data.imageUrl,
+      imageBase64: data.imageBase64,
+    }
+  } catch (error) {
+    console.error('Gemini Inpainting エラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
+ * 片付け場所を分析する（Gemini で場所と行動を特定）
+ * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
+ * @returns {Promise<Object>} 分析結果（spots配列、encouragementなど）
+ */
+export async function analyzeCleanupSpots(imageBase64) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/analyze-cleanup-spots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      spots: data.spots || [],
+      totalEstimatedTime: data.totalEstimatedTime || '不明',
+      encouragement: data.encouragement || '一緒に片付けましょう！',
+      rawText: data.rawText,
+    }
+  } catch (error) {
+    console.error('片付け分析エラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
+ * 部屋の整理イメージを生成（散らかった物を整理整頓した状態に変換）
+ * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
+ * @returns {Promise<Object>} 編集された画像情報
+ */
+export async function generateOrganizedRoom(imageBase64) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/gemini/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+        editType: 'organize',
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      imageUrl: data.imageUrl,
+      imageBase64: data.imageBase64,
+    }
+  } catch (error) {
+    console.error('Gemini 整理イメージ生成エラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}

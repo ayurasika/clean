@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* 日本語フォントの読み込み */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+
+@theme {
+  /* あなたのデザイン用のカスタム色を設定 */
+  --color-coral: #FF8A80;
+  --color-peach: #FFAB91;
+  --color-orange: #FFB74D;
+  --color-yellow: #FFD54F;
+  --font-jp: "Noto Sans JP", sans-serif;
+}
+
+/* カスタムグラデーションの定義 */
+@utility gradient-warm {
+  background: linear-gradient(135deg, #FF8A80 0%, #FFAB91 25%, #FFB74D 75%, #FFD54F 100%);
+}
+
+@utility gradient-progress {
+  background: linear-gradient(90deg, #FF8A80 0%, #FFB74D 50%, #FFD54F 100%);
+}
