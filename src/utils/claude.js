@@ -3,8 +3,9 @@
  * バックエンドプロキシを経由してClaude APIを使用して画像を分析します
  */
 
-// APIベースURL（開発環境）
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+// APIベースURL（Viteプロキシ経由で相対パスを使用）
+// ngrok経由でも動作するように空文字列（相対パス）をデフォルトに
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 /**
  * 画像をBase64形式でClaude APIに送信して分析する

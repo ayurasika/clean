@@ -62,14 +62,15 @@ const usageTracker = {
   }
 }
 
-// CORS設定
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-  methods: ['POST', 'GET', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
-}))
+// CORS設定（開発環境: すべてのオリジンを許可）
+// Viteプロキシ経由のリクエストも、直接アクセスも許可
+app.use(cors())
 
-app.use(express.json({ limit: '10mb' }))
+// JSON形式のデータ制限を 50MB に拡大
+app.use(express.json({ limit: '50mb' }));
+
+// URLエンコード形式のデータ制限も合わせて 50MB に拡大（念のため）
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Claude API プロキシエンドポイント
 app.post('/api/analyze', async (req, res) => {

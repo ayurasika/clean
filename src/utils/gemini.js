@@ -4,8 +4,9 @@
  * Image-to-Image 変換で元の部屋の構造を維持しながら綺麗にします
  */
 
-// APIベースURL（開発環境）
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+// APIベースURL（Viteプロキシ経由で相対パスを使用）
+// ngrok経由でも動作するように空文字列（相対パス）をデフォルトに
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 /**
  * 撮影した部屋の写真を元に、片付いた後の未来予想図を生成する
