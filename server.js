@@ -13,6 +13,55 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3001
 
+// ============================================================
+// 生成回数カウント管理（コスト管理用）
+// ============================================================
+const usageTracker = {
+  flash: { count: 0, lastReset: new Date().toDateString() },
+  pro: { count: 0, lastReset: new Date().toDateString() },
+  dailyLimits: {
+    flash: 50,  // Flash: 1日50回まで
+    pro: 10,    // Pro: 1日10回まで（高コストなため）
+  },
+
+  // 日付が変わったらリセット
+  checkAndReset() {
+    const today = new Date().toDateString()
+    if (this.flash.lastReset !== today) {
+      this.flash = { count: 0, lastReset: today }
+      console.log('📊 Flash使用回数をリセットしました')
+    }
+    if (this.pro.lastReset !== today) {
+      this.pro = { count: 0, lastReset: today }
+      console.log('📊 Pro使用回数をリセットしました')
+    }
+  },
+
+  // 使用可能かチェック
+  canUse(model) {
+    this.checkAndReset()
+    const type = model === 'pro' ? 'pro' : 'flash'
+    return this[type].count < this.dailyLimits[type]
+  },
+
+  // 使用回数をインクリメント
+  increment(model) {
+    this.checkAndReset()
+    const type = model === 'pro' ? 'pro' : 'flash'
+    this[type].count++
+    console.log(`📊 ${type.toUpperCase()} 使用回数: ${this[type].count}/${this.dailyLimits[type]}`)
+  },
+
+  // 現在の使用状況を取得
+  getStatus() {
+    this.checkAndReset()
+    return {
+      flash: { used: this.flash.count, limit: this.dailyLimits.flash },
+      pro: { used: this.pro.count, limit: this.dailyLimits.pro },
+    }
+  }
+}
+
 // CORS設定
 app.use(cors({
   origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -132,14 +181,30 @@ app.post('/api/analyze', async (req, res) => {
 
 /**
  * Gemini で画像を編集（未来予想図生成）
- * gemini-2.5-flash-image を使用
+ * ハイブリッド構成:
+ * - 基本: gemini-2.5-flash-image（高速・低コスト）
+ * - 高画質モード: gemini-2.0-flash-exp（高品質・高コスト）
  */
 app.post('/api/gemini/edit-image', async (req, res) => {
   try {
-    const { imageBase64, editType } = req.body
+    const { imageBase64, editType, highQuality } = req.body
 
     if (!imageBase64) {
       return res.status(400).json({ error: '画像データが必要です' })
+    }
+
+    // モデル選択（高画質モードかどうか）
+    const useProModel = highQuality === true
+    const modelType = useProModel ? 'pro' : 'flash'
+
+    // 使用回数チェック
+    if (!usageTracker.canUse(modelType)) {
+      const status = usageTracker.getStatus()
+      return res.status(429).json({
+        error: `本日の${useProModel ? '高画質モード' : '通常モード'}の使用回数上限に達しました`,
+        usage: status,
+        suggestion: useProModel ? '通常モードをお試しください' : '明日またお試しください'
+      })
     }
 
     // Base64データからプレフィックスを除去
@@ -299,7 +364,20 @@ Be thorough. List EVERY visible item in one of these categories.`
       if (removeList.length > 0) {
         const removeListText = removeList.map((item, i) => `❌ ${item} → DELETE`).join('\n')
         // プロンプトの最初に追加（先頭に持ってくる）
-        editPrompt = `🚨 MANDATORY DELETION LIST 🚨
+
+        // 【ここを追加】Proモデルの暴走を防ぐための強力な保護命令（英語）
+        const protectionCommand = `
+[CRITICAL INSTRUCTION: PRESERVE STRUCTURE]
+1. PRESERVE ARCHITECTURE: You MUST keep all permanent architectural elements EXACTLY as they are, including walls, floors, ceilings, windows, and their treatments (curtains, blinds).
+2. KEEP BUILT-INS & FIXTURES: Do NOT remove or alter any built-in furniture or kitchen fixtures. 
+   - Specifically, KEEP the kitchen stovetop (IH/gas burners), sink faucets, and ventilation hoods.
+3. SELECTIVE REMOVAL: Only remove the specific movable items listed in the "MANDATORY DELETION LIST" below.
+`.trim();
+
+        // 保護命令の後に、削除リストを追加
+        editPrompt = `${protectionCommand}
+
+🚨 MANDATORY DELETION LIST 🚨
 以下を必ず画像から消去せよ:
 ${removeListText}
 
@@ -313,15 +391,24 @@ ${editPrompt}`
     }
 
     // ============================================================
-    // Gemini 2.5 Flash Image API で画像生成
+    // Gemini API で画像生成（ハイブリッド構成）
     // ============================================================
+
+    // モデル選択
+    // - Flash: gemini-2.5-flash-image（高速・低コスト）
+    // - Pro: gemini-2.0-flash-exp（高品質・REMOVEリスト対応が優秀）
+    const modelName = useProModel
+      ? 'gemini-2.0-flash-exp'
+      : 'gemini-2.5-flash-image'
+
     console.log('=== 画像編集リクエスト ===')
+    console.log('モデル:', modelName, useProModel ? '(高画質モード)' : '(通常モード)')
     console.log('editType:', editType)
     console.log('temperature:', temperature)
     console.log('最終プロンプト:', editPrompt.substring(0, 500) + '...')
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -413,10 +500,15 @@ ${editPrompt}`
       return res.status(500).json({ error: '画像の生成に失敗しました。AIがテキストのみを返しました。' })
     }
 
+    // 成功時に使用回数をインクリメント
+    usageTracker.increment(modelType)
+
     res.json({
       success: true,
       imageBase64: generatedImageBase64,
       imageUrl: `data:image/png;base64,${generatedImageBase64}`,
+      model: modelName,
+      usage: usageTracker.getStatus(),
     })
   } catch (error) {
     console.error('Gemini サーバーエラー:', error)
@@ -734,6 +826,14 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' })
+})
+
+// 使用状況取得エンドポイント
+app.get('/api/usage', (req, res) => {
+  res.json({
+    success: true,
+    usage: usageTracker.getStatus(),
+  })
 })
 
 app.listen(PORT, () => {

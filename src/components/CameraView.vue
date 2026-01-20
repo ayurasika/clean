@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { analyzeImageWithClaude } from '../utils/claude.js'
-import { generateFutureVision, analyzeCleanupSpots } from '../utils/gemini.js'
+import { generateFutureVision, analyzeCleanupSpots, getUsageStatus } from '../utils/gemini.js'
 import { useRoomStore } from '../stores/room.js'
 
 const router = useRouter()
@@ -25,6 +25,10 @@ const cleanupSpots = ref([])
 const totalEstimatedTime = ref('')
 const encouragement = ref('')
 const completedSpots = ref([])
+
+// 高画質モード設定
+const highQualityMode = ref(false)
+const usageStatus = ref({ flash: { used: 0, limit: 50 }, pro: { used: 0, limit: 10 } })
 
 // カメラの開始
 const startCamera = async () => {
@@ -107,19 +111,32 @@ const stopCamera = () => {
   }
 }
 
+// 使用状況を取得
+const fetchUsageStatus = async () => {
+  const result = await getUsageStatus()
+  if (result.success) {
+    usageStatus.value = result.usage
+  }
+}
+
 // STEP 1: 未来予想図を生成（Gemini Image-to-Image）
 const generateFutureImage = async () => {
   currentPhase.value = 'generating'
 
   try {
     // Gemini に撮影した画像を渡して、片付いた状態に変換
-    const result = await generateFutureVision(capturedImage.value)
+    // 高画質モードが有効な場合はProモデルを使用
+    const result = await generateFutureVision(capturedImage.value, false, highQualityMode.value)
 
     if (result.success) {
       futureVisionUrl.value = result.imageUrl
       roomStore.setFutureVisionUrl(result.imageUrl)
       currentPhase.value = 'vision'
-      console.log('未来予想図を生成しました（Gemini）')
+      // 使用状況を更新
+      if (result.usage) {
+        usageStatus.value = result.usage
+      }
+      console.log('未来予想図を生成しました（モデル:', result.model, '）')
     } else {
       console.error('未来予想図の生成に失敗:', result.error)
       alert('未来予想図の生成に失敗しました。再度お試しください。')
@@ -140,13 +157,18 @@ const regenerateFutureImage = async () => {
 
   try {
     // isRegenerate = true で より強力なプロンプトを使用
-    const result = await generateFutureVision(capturedImage.value, true)
+    // 高画質モードが有効な場合はProモデルを使用
+    const result = await generateFutureVision(capturedImage.value, true, highQualityMode.value)
 
     if (result.success) {
       futureVisionUrl.value = result.imageUrl
       roomStore.setFutureVisionUrl(result.imageUrl)
       currentPhase.value = 'vision'
-      console.log('未来予想図を再生成しました')
+      // 使用状況を更新
+      if (result.usage) {
+        usageStatus.value = result.usage
+      }
+      console.log('未来予想図を再生成しました（モデル:', result.model, '）')
     } else {
       console.error('再生成に失敗:', result.error)
       alert('再生成に失敗しました。もう一度お試しください。')
@@ -308,6 +330,7 @@ const goHome = () => {
 
 onMounted(() => {
   startCamera()
+  fetchUsageStatus()
 })
 
 onUnmounted(() => {
@@ -368,21 +391,19 @@ onUnmounted(() => {
           v-if="currentPhase === 'vision'"
           class="absolute inset-0 flex flex-col"
         >
-          <!-- 未来予想図画像 -->
+          <!-- 未来予想図画像（オーバーレイなし・クリア表示） -->
           <div class="flex-1 relative overflow-hidden">
             <img
               :src="futureVisionUrl"
               alt="片付いた後の未来予想図"
               class="w-full h-full object-cover"
             />
-            <!-- グラデーションオーバーレイ -->
-            <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
 
-            <!-- テキストオーバーレイ -->
-            <div class="absolute bottom-0 left-0 right-0 p-6 text-white">
-              <p class="text-sm opacity-80 mb-1">AI が変身させた</p>
+            <!-- テキスト（text-shadowで可読性確保） -->
+            <div class="absolute bottom-0 left-0 right-0 p-6 text-white" style="text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9);">
+              <p class="text-sm mb-1">AI が変身させた</p>
               <p class="text-2xl font-bold mb-2">あなたの部屋の未来</p>
-              <p class="text-sm opacity-70">同じ部屋がこんなに綺麗に！一緒に目指しましょう</p>
+              <p class="text-sm">同じ部屋がこんなに綺麗に！一緒に目指しましょう</p>
             </div>
           </div>
 
@@ -589,6 +610,29 @@ onUnmounted(() => {
           @change="handleFileSelect"
         />
 
+        <!-- 高画質モード切り替え -->
+        <div class="mb-4 flex items-center justify-between bg-gray-800 rounded-xl p-3">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+            </svg>
+            <div>
+              <p class="text-white text-sm font-medium">高画質モード</p>
+              <p class="text-gray-400 text-xs">Proモデルで精度UP（残り {{ usageStatus.pro.limit - usageStatus.pro.used }} 回）</p>
+            </div>
+          </div>
+          <button
+            @click="highQualityMode = !highQualityMode"
+            class="relative w-12 h-6 rounded-full transition-colors duration-200"
+            :class="highQualityMode ? 'bg-yellow-500' : 'bg-gray-600'"
+          >
+            <span
+              class="absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-200"
+              :class="highQualityMode ? 'translate-x-6' : 'translate-x-0.5'"
+            ></span>
+          </button>
+        </div>
+
         <div class="flex justify-center items-center gap-8">
           <!-- ファイル選択ボタン -->
           <button
@@ -604,9 +648,13 @@ onUnmounted(() => {
           <!-- 撮影ボタン -->
           <button
             @click="capturePhoto"
-            class="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+            class="w-20 h-20 rounded-full border-4 flex items-center justify-center shadow-lg transition-colors"
+            :class="highQualityMode ? 'bg-yellow-400 border-yellow-300 hover:bg-yellow-300' : 'bg-white border-gray-300 hover:bg-gray-100'"
           >
-            <div class="w-16 h-16 rounded-full bg-white border-2 border-gray-400"></div>
+            <div
+              class="w-16 h-16 rounded-full border-2"
+              :class="highQualityMode ? 'bg-yellow-400 border-yellow-500' : 'bg-white border-gray-400'"
+            ></div>
           </button>
 
           <!-- スペーサー（バランス用） -->
@@ -614,7 +662,9 @@ onUnmounted(() => {
         </div>
 
         <p class="text-center text-gray-400 text-sm mt-4">部屋全体が映るように撮影してください</p>
-        <p class="text-center text-gray-500 text-xs mt-1">または左のボタンでファイルから選択</p>
+        <p class="text-center text-gray-500 text-xs mt-1">
+          {{ highQualityMode ? '高画質モードで生成します' : '通常モード（残り ' + (usageStatus.flash.limit - usageStatus.flash.used) + ' 回）' }}
+        </p>
       </div>
     </div>
   </div>
