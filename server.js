@@ -16,6 +16,66 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
+// ============================================================
+// 環境変数・APIキーの検証
+// ============================================================
+const CLAUDE_API_KEY = process.env.VITE_CLAUDE_API_KEY
+const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY
+
+const validateApiKeys = () => {
+  const missing = []
+
+  if (!CLAUDE_API_KEY) {
+    missing.push('VITE_CLAUDE_API_KEY')
+  }
+  if (!GEMINI_API_KEY) {
+    missing.push('VITE_GEMINI_API_KEY')
+  }
+
+  if (missing.length > 0) {
+    console.error('❌ 必須の環境変数が設定されていません:')
+    missing.forEach(key => console.error(`   - ${key}`))
+    console.error('')
+    console.error('📝 .env ファイルに以下を追加してください:')
+    missing.forEach(key => console.error(`   ${key}=your_api_key_here`))
+    console.error('')
+
+    if (process.env.NODE_ENV === 'production') {
+      console.error('🚨 本番環境のため、サーバーを停止します')
+      process.exit(1)
+    } else {
+      console.warn('⚠️  開発環境のため、サーバーは起動しますが、該当APIは動作しません')
+    }
+  } else {
+    console.log('✅ APIキー検証OK')
+    console.log(`   - Claude API: ${CLAUDE_API_KEY.slice(0, 10)}...`)
+    console.log(`   - Gemini API: ${GEMINI_API_KEY.slice(0, 10)}...`)
+  }
+
+  return missing.length === 0
+}
+
+// APIキーが設定されているかチェックするミドルウェア
+const requireClaudeApiKey = (req, res, next) => {
+  if (!CLAUDE_API_KEY) {
+    return res.status(503).json({
+      error: 'Claude APIキーが設定されていません',
+      code: 'MISSING_API_KEY'
+    })
+  }
+  next()
+}
+
+const requireGeminiApiKey = (req, res, next) => {
+  if (!GEMINI_API_KEY) {
+    return res.status(503).json({
+      error: 'Gemini APIキーが設定されていません',
+      code: 'MISSING_API_KEY'
+    })
+  }
+  next()
+}
+
 const app = express()
 const PORT = process.env.PORT || 3001
 
@@ -143,7 +203,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Claude API プロキシエンドポイント
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', requireClaudeApiKey, async (req, res) => {
   try {
     const { imageBase64 } = req.body
 
@@ -158,7 +218,7 @@ app.post('/api/analyze', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.VITE_CLAUDE_API_KEY,
+        'x-api-key': CLAUDE_API_KEY,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -601,7 +661,7 @@ Verdict guide:
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -670,7 +730,7 @@ Verdict guide:
 /**
  * Gemini で画像を編集（改善版 + 検品 + リトライ機能）
  */
-app.post('/api/gemini/edit-image', async (req, res) => {
+app.post('/api/gemini/edit-image', requireGeminiApiKey, async (req, res) => {
   try {
     const { imageBase64, editType, highQuality } = req.body
 
@@ -709,7 +769,7 @@ app.post('/api/gemini/edit-image', async (req, res) => {
       const analysisPrompt = createAnalysisPrompt()
 
       const analysisResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: {
@@ -900,7 +960,7 @@ ${editPrompt}`
       }
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: {
@@ -970,7 +1030,7 @@ ${editPrompt}`
 
         const fallbackModelName = 'gemini-2.5-flash-image'
         const fallbackResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModelName}:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModelName}:generateContent?key=${GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: {
@@ -1193,7 +1253,7 @@ ${editPrompt}`
 /**
  * Gemini Inpainting エンドポイント
  */
-app.post('/api/gemini/inpaint', async (req, res) => {
+app.post('/api/gemini/inpaint', requireGeminiApiKey, async (req, res) => {
   try {
     const { imageBase64, maskBase64, editType } = req.body
 
@@ -1206,7 +1266,7 @@ app.post('/api/gemini/inpaint', async (req, res) => {
     const inpaintPrompt = `Clean up this room. Remove all clutter and mess from the floor and surfaces. Keep furniture in place. Restore the original floor and wall textures where items are removed.`
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -1271,7 +1331,7 @@ app.post('/api/gemini/inpaint', async (req, res) => {
 })
 
 // レガシーエンドポイント（後方互換性）
-app.post('/api/generate-image', async (req, res) => {
+app.post('/api/generate-image', requireGeminiApiKey, async (req, res) => {
   req.body.editType = 'future_vision'
   return res.redirect(307, '/api/gemini/edit-image')
 })
@@ -1279,7 +1339,7 @@ app.post('/api/generate-image', async (req, res) => {
 // ============================================================
 // 片付け場所分析エンドポイント
 // ============================================================
-app.post('/api/analyze-cleanup-spots', async (req, res) => {
+app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => {
   try {
     const { imageBase64 } = req.body
 
@@ -1325,7 +1385,7 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
 - low: 10分以上`
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${process.env.VITE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -1410,7 +1470,7 @@ app.post('/api/analyze-cleanup-spots', async (req, res) => {
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '3.3' })
+  res.json({ status: 'ok', version: '3.4' })
 })
 
 // 使用状況取得
@@ -1422,7 +1482,10 @@ app.get('/api/usage', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`🚀 プロキシサーバー v3.3 起動: http://localhost:${PORT}`)
+  console.log(`🚀 プロキシサーバー v3.4 起動: http://localhost:${PORT}`)
+  console.log('')
+  validateApiKeys()
+  console.log('')
   console.log('改善点:')
   console.log('  ✅ JSONモードによる分析精度向上')
   console.log('  ✅ 不変条件の強化（カメラ/照明/テクスチャ保護）')
