@@ -82,8 +82,61 @@ const usageTracker = {
   }
 }
 
-// CORS設定（開発環境: すべてのオリジンを許可）
-app.use(cors())
+// ============================================================
+// CORS設定（セキュリティ強化版）
+// ============================================================
+const allowedOrigins = [
+  // ローカル開発環境
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  // 環境変数で指定された本番ドメイン
+  process.env.PRODUCTION_ORIGIN,
+].filter(Boolean) // undefined を除去
+
+// 動的に許可するドメインパターン（トンネルサービス用）
+const allowedOriginPatterns = [
+  /^https:\/\/.*\.trycloudflare\.com$/,  // Cloudflare Tunnel
+  /^https:\/\/.*\.ngrok-free\.app$/,      // ngrok (新ドメイン)
+  /^https:\/\/.*\.ngrok\.io$/,            // ngrok (旧ドメイン)
+  /^https:\/\/.*\.loca\.lt$/,             // localtunnel
+]
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // オリジンがない場合（同一オリジン、curl等）は許可
+    if (!origin) {
+      return callback(null, true)
+    }
+
+    // 許可リストに含まれている場合
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+
+    // パターンマッチで許可（トンネルサービス）
+    const isAllowedPattern = allowedOriginPatterns.some(pattern => pattern.test(origin))
+    if (isAllowedPattern) {
+      return callback(null, true)
+    }
+
+    // 開発モードではすべて許可（本番では削除推奨）
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`⚠️  開発モード: 未登録オリジンを許可: ${origin}`)
+      return callback(null, true)
+    }
+
+    // 本番環境では拒否
+    console.log(`🚫 CORS拒否: ${origin}`)
+    return callback(new Error('CORS policy violation'), false)
+  },
+  credentials: true,  // Cookie等の認証情報を許可
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}
+
+app.use(cors(corsOptions))
 
 // JSON形式のデータ制限を 50MB に拡大
 app.use(express.json({ limit: '50mb' }));
