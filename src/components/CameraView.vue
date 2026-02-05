@@ -30,6 +30,45 @@ const completedSpots = ref([])
 const highQualityMode = ref(false)
 const usageStatus = ref({ flash: { used: 0, limit: 50 }, pro: { used: 0, limit: 10 } })
 
+// Before/After比較スライダー
+const sliderPosition = ref(50) // 0-100（50が中央）
+const isDragging = ref(false)
+const sliderContainerRef = ref(null)
+
+// スライダードラッグ開始
+const startDrag = (e) => {
+  isDragging.value = true
+  updateSliderPosition(e)
+}
+
+// スライダードラッグ中
+const onDrag = (e) => {
+  if (!isDragging.value) return
+  updateSliderPosition(e)
+}
+
+// スライダードラッグ終了
+const endDrag = () => {
+  isDragging.value = false
+}
+
+// スライダー位置を更新
+const updateSliderPosition = (e) => {
+  if (!sliderContainerRef.value) return
+
+  const container = sliderContainerRef.value
+  const rect = container.getBoundingClientRect()
+
+  // タッチイベントとマウスイベントの両方に対応
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX
+
+  // コンテナ内の相対位置を計算
+  const x = clientX - rect.left
+  const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100))
+
+  sliderPosition.value = percentage
+}
+
 // カメラの開始
 const startCamera = async () => {
   try {
@@ -386,22 +425,70 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 未来予想図表示 (STEP 2) -->
+        <!-- 未来予想図表示 (STEP 2) - Before/After比較スライダー -->
         <div
           v-if="currentPhase === 'vision'"
           class="absolute inset-0 flex flex-col"
         >
-          <!-- 未来予想図画像（オーバーレイなし・クリア表示） -->
-          <div class="flex-1 relative overflow-hidden">
+          <!-- Before/After 比較スライダー -->
+          <div
+            ref="sliderContainerRef"
+            class="flex-1 relative overflow-hidden cursor-ew-resize select-none"
+            @mousedown="startDrag"
+            @mousemove="onDrag"
+            @mouseup="endDrag"
+            @mouseleave="endDrag"
+            @touchstart="startDrag"
+            @touchmove="onDrag"
+            @touchend="endDrag"
+          >
+            <!-- After画像（片付いた後）- 背景として全体表示 -->
             <img
               :src="futureVisionUrl"
               alt="片付いた後の未来予想図"
-              class="w-full h-full object-cover"
+              class="absolute inset-0 w-full h-full object-cover"
+              draggable="false"
             />
 
-            <!-- テキスト（text-shadowで可読性確保） -->
-            <div class="absolute bottom-0 left-0 right-0 p-6 text-white" style="text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9);">
-              <p class="text-sm mb-1">AI が変身させた</p>
+            <!-- Before画像（片付ける前）- clip-pathで部分表示 -->
+            <div
+              class="absolute inset-0 overflow-hidden"
+              :style="{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }"
+            >
+              <img
+                :src="capturedImage"
+                alt="片付ける前の部屋"
+                class="w-full h-full object-cover"
+                draggable="false"
+              />
+            </div>
+
+            <!-- スライダーライン -->
+            <div
+              class="absolute top-0 bottom-0 w-1 bg-white shadow-lg z-10"
+              :style="{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }"
+            >
+              <!-- スライダーハンドル -->
+              <div
+                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center"
+              >
+                <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                </svg>
+              </div>
+            </div>
+
+            <!-- Before/Afterラベル -->
+            <div class="absolute top-4 left-4 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full font-medium">
+              Before
+            </div>
+            <div class="absolute top-4 right-4 bg-white/90 text-gray-800 text-xs px-3 py-1.5 rounded-full font-medium">
+              After ✨
+            </div>
+
+            <!-- テキスト（下部） -->
+            <div class="absolute bottom-0 left-0 right-0 p-6 text-white pointer-events-none" style="text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9);">
+              <p class="text-sm mb-1">スライダーを動かして比較</p>
               <p class="text-2xl font-bold mb-2">あなたの部屋の未来</p>
               <p class="text-sm">同じ部屋がこんなに綺麗に！一緒に目指しましょう</p>
             </div>
