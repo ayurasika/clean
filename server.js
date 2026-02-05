@@ -276,6 +276,10 @@ app.post('/api/analyze', requireGeminiApiKey, async (req, res) => {
     const data = await response.json()
     const analysisText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
+    console.log('\n📊 === 戦略的分析結果（Gemini） ===')
+    console.log(analysisText)
+    console.log('=================================\n')
+
     res.json({
       success: true,
       analysis: analysisText,
