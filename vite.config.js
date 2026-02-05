@@ -16,8 +16,8 @@ export default defineConfig({
   server: {
     // 外部からのアクセスを許可（ngrok対応）
     host: true,
-    // ngrokなど外部ホストからのアクセスを許可
-    allowedHosts: 'all',
+    // すべての外部ホストからのアクセスを許可
+    allowedHosts: true,
     // APIリクエストをバックエンドにプロキシ
     proxy: {
       '/api': {
