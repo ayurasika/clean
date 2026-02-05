@@ -158,6 +158,44 @@ export async function analyzeCleanupSpots(imageBase64) {
 }
 
 /**
+ * 戦略的分析を実行（Gemini統一版）
+ * 部屋をゾーニングし、最適な片付けエリアとタスクを提案
+ * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
+ * @returns {Promise<Object>} 分析結果
+ */
+export async function analyzeStrategic(imageBase64) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      analysis: data.analysis,
+      rawResponse: data.rawResponse,
+    }
+  } catch (error) {
+    console.error('戦略的分析エラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
  * 部屋の整理イメージを生成（散らかった物を整理整頓した状態に変換）
  * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
  * @returns {Promise<Object>} 編集された画像情報

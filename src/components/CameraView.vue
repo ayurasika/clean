@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { analyzeImageWithClaude } from '../utils/claude.js'
-import { generateFutureVision, analyzeCleanupSpots, getUsageStatus } from '../utils/gemini.js'
+import { generateFutureVision, analyzeCleanupSpots, getUsageStatus, analyzeStrategic } from '../utils/gemini.js'
 import { useRoomStore } from '../stores/room.js'
 
 const router = useRouter()
@@ -277,25 +276,25 @@ const getPriorityLabel = (priority) => {
   }
 }
 
-// STEP 3: 戦略的分析を開始（Claude）
+// STEP 3: 戦略的分析を開始（Gemini統一版）
 const startStrategicAnalysis = async () => {
   if (!capturedImage.value) return
 
   currentPhase.value = 'analyzing'
 
   try {
-    const claudeResult = await analyzeImageWithClaude(capturedImage.value)
+    const result = await analyzeStrategic(capturedImage.value)
 
-    if (claudeResult.success) {
-      analysisResult.value = claudeResult.analysis
-      console.log('戦略的分析結果:', claudeResult.analysis)
+    if (result.success) {
+      analysisResult.value = result.analysis
+      console.log('戦略的分析結果:', result.analysis)
 
-      const jsonData = extractJsonFromAnalysis(claudeResult.analysis)
+      const jsonData = extractJsonFromAnalysis(result.analysis)
       console.log('抽出されたJSONデータ:', jsonData)
 
       if (jsonData) {
         roomStore.updateFromStrategicAnalysis({
-          analysis: claudeResult.analysis,
+          analysis: result.analysis,
           dirtyLevel: jsonData.dirtyLevel,
           selectedZone: jsonData.selectedZone,
           reason: jsonData.reason,
@@ -305,7 +304,7 @@ const startStrategicAnalysis = async () => {
         })
       } else {
         console.warn('JSONデータが抽出できませんでした')
-        roomStore.setAnalysisResult(claudeResult.analysis)
+        roomStore.setAnalysisResult(result.analysis)
       }
 
       currentPhase.value = 'complete'
@@ -315,8 +314,8 @@ const startStrategicAnalysis = async () => {
         goHome()
       }, 2000)
     } else {
-      console.error('戦略的分析エラー:', claudeResult.error)
-      alert('分析に失敗しました: ' + claudeResult.error)
+      console.error('戦略的分析エラー:', result.error)
+      alert('分析に失敗しました: ' + result.error)
       currentPhase.value = 'spots_result'
     }
   } catch (error) {

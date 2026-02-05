@@ -17,55 +17,34 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 // ============================================================
-// 環境変数・APIキーの検証
+// 環境変数・APIキーの検証（Gemini統一版）
 // ============================================================
-const CLAUDE_API_KEY = process.env.VITE_CLAUDE_API_KEY
 const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY
 
 const validateApiKeys = () => {
-  const missing = []
-
-  if (!CLAUDE_API_KEY) {
-    missing.push('VITE_CLAUDE_API_KEY')
-  }
   if (!GEMINI_API_KEY) {
-    missing.push('VITE_GEMINI_API_KEY')
-  }
-
-  if (missing.length > 0) {
     console.error('❌ 必須の環境変数が設定されていません:')
-    missing.forEach(key => console.error(`   - ${key}`))
+    console.error('   - VITE_GEMINI_API_KEY')
     console.error('')
     console.error('📝 .env ファイルに以下を追加してください:')
-    missing.forEach(key => console.error(`   ${key}=your_api_key_here`))
+    console.error('   VITE_GEMINI_API_KEY=your_api_key_here')
     console.error('')
 
     if (process.env.NODE_ENV === 'production') {
       console.error('🚨 本番環境のため、サーバーを停止します')
       process.exit(1)
     } else {
-      console.warn('⚠️  開発環境のため、サーバーは起動しますが、該当APIは動作しません')
+      console.warn('⚠️  開発環境のため、サーバーは起動しますがAPIは動作しません')
     }
-  } else {
-    console.log('✅ APIキー検証OK')
-    console.log(`   - Claude API: ${CLAUDE_API_KEY.slice(0, 10)}...`)
-    console.log(`   - Gemini API: ${GEMINI_API_KEY.slice(0, 10)}...`)
+    return false
   }
 
-  return missing.length === 0
+  console.log('✅ APIキー検証OK')
+  console.log(`   - Gemini API: ${GEMINI_API_KEY.slice(0, 10)}...`)
+  return true
 }
 
 // APIキーが設定されているかチェックするミドルウェア
-const requireClaudeApiKey = (req, res, next) => {
-  if (!CLAUDE_API_KEY) {
-    return res.status(503).json({
-      error: 'Claude APIキーが設定されていません',
-      code: 'MISSING_API_KEY'
-    })
-  }
-  next()
-}
-
 const requireGeminiApiKey = (req, res, next) => {
   if (!GEMINI_API_KEY) {
     return res.status(503).json({
@@ -202,8 +181,8 @@ app.use(cors(corsOptions))
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Claude API プロキシエンドポイント
-app.post('/api/analyze', requireClaudeApiKey, async (req, res) => {
+// 戦略的分析エンドポイント（Gemini統一版）
+app.post('/api/analyze', requireGeminiApiKey, async (req, res) => {
   try {
     const { imageBase64 } = req.body
 
@@ -214,31 +193,7 @@ app.post('/api/analyze', requireClaudeApiKey, async (req, res) => {
     // Base64データからプレフィックスを除去
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/jpeg',
-                  data: base64Data,
-                },
-              },
-              {
-                type: 'text',
-                text: `あなたは「片付けの司令塔AI」です。この部屋の写真を戦略的に分析してください。
+    const prompt = `あなたは「片付けの司令塔AI」です。この部屋の写真を戦略的に分析してください。
 
 ## 分析のステップ
 
@@ -267,7 +222,7 @@ app.post('/api/analyze', requireClaudeApiKey, async (req, res) => {
 
 ## 出力形式
 
-まず、分析コメントを2〜3文で書いてください。
+まず、分析コメントを2〜3文で書いてください。温かく励ますトーンで書いてください。
 
 次に、必ず以下のJSON形式で出力してください：
 {
@@ -277,26 +232,53 @@ app.post('/api/analyze', requireClaudeApiKey, async (req, res) => {
   "tasks": ["タスク1", "タスク2", "タスク3"],
   "estimatedTime": "推定所要時間（例：10分）",
   "zones": ["認識した全エリアのリスト"]
-}`,
-              },
-            ],
+}`
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: 'image/jpeg',
+                    data: base64Data,
+                  },
+                },
+                {
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 2048,
           },
-        ],
-      }),
-    })
+        }),
+      }
+    )
 
     if (!response.ok) {
-      const errorData = await response.json()
-      console.error('Claude API エラー:', errorData)
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Gemini API エラー:', errorData)
       return res.status(response.status).json({
-        error: errorData.error?.message || 'Claude API エラー',
+        error: errorData.error?.message || 'Gemini API エラー',
       })
     }
 
     const data = await response.json()
+    const analysisText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
     res.json({
       success: true,
-      analysis: data.content[0].text,
+      analysis: analysisText,
       rawResponse: data,
     })
   } catch (error) {
