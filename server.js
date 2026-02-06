@@ -599,32 +599,80 @@ ${qualityKeywords}`
  * 生成画像が基準を満たしているかをチェック
  */
 const inspectGeneratedImage = async (originalBase64, generatedBase64, roomType) => {
-  const inspectionPrompt = `You are a quality control inspector for AI-generated cleaned room images.
+  const inspectionPrompt = `You are a STRICT quality control inspector for AI-generated cleaned room images.
 
 Compare these TWO images:
 1. ORIGINAL image (the messy room)
 2. GENERATED image (the cleaned version)
 
-Check the following criteria strictly:
+Check the following criteria STRICTLY:
 
 【CRITERION 1: STRUCTURAL INTEGRITY】
 - Are all major furniture items (tables, chairs, sofas, beds, shelves) still in the SAME position?
-- Are kitchen appliances (IH cooktop, stove, sink, faucet) still visible and unchanged?
 - Are walls, windows, and doors preserved correctly?
 - Is the camera angle and perspective EXACTLY the same?
 
-【CRITERION 2: CLEANUP EFFECTIVENESS】
-- Is the generated image DRAMATICALLY cleaner than the original?
-- Are floor surfaces cleared of clutter?
-- Are table/desk surfaces tidied up?
-- Does it look like a "before and after" transformation?
-- Is the change VISIBLE and SIGNIFICANT (not just minor adjustments)?
+【CRITERION 2: APPLIANCE PRESERVATION - MOST CRITICAL】
+THIS IS THE MOST IMPORTANT CHECK. Score 0 if ANY appliance is removed or significantly altered.
+Kitchen appliances to check:
+- IH cooktop / stove / gas range (コンロ)
+- Sink and faucet (シンク・蛇口)
+- Refrigerator (冷蔵庫)
+- Microwave (電子レンジ)
+- Range hood / exhaust fan (換気扇)
+- Dishwasher (食洗機)
+- Rice cooker, toaster, coffee maker
+
+Other appliances to check:
+- TV, monitors, computers
+- Air conditioner units
+- Washing machine, dryer
+- Vacuum cleaner (if visible)
+
+FAIL IMMEDIATELY if:
+- Any appliance visible in ORIGINAL is missing in GENERATED
+- Any appliance has changed shape, color, or position significantly
+- Appliance controls/buttons have disappeared
+
+【CRITERION 3: CLEANUP EFFECTIVENESS - BE EXTREMELY STRICT】
+You MUST be very harsh in scoring this criterion. Most AI-generated "cleaned" images are NOT clean enough.
+
+Score 0-3 (FAIL) if ANY of these are true:
+- You can still see papers, documents, or mail anywhere
+- You can still see dishes, cups, or bottles on surfaces
+- You can still see clothes, bags, or personal items
+- You can still see toys or random objects on floor/stairs
+- The counter/table surfaces are not at least 80% empty
+- The floor is not completely clear of loose items
+- At first glance, you cannot IMMEDIATELY tell this is a "cleaned" version
+
+Score 4-6 (FAIL) if:
+- Some clutter was removed but significant items remain
+- The change is noticeable but not dramatic
+
+Score 7-8 (BORDERLINE PASS) if:
+- Most visible clutter is gone
+- Surfaces are mostly clear
+- The transformation is noticeable
+
+Score 9-10 (CLEAR PASS) ONLY if:
+- The transformation is SHOCKING - like a different room
+- All surfaces are 90%+ empty (only fixed appliances remain)
+- Floor is COMPLETELY clear
+- It looks like a professional cleaning service spent hours
+
+BE HARSH. If in doubt, score LOWER. A score of 10 should be rare.
 
 【OUTPUT FORMAT - JSON only】
 {
   "verdict": "PASS or FAIL",
   "structural_integrity": {
     "score": 0-10,
+    "issues": ["list any problems found, or empty array if none"]
+  },
+  "appliance_preservation": {
+    "score": 0-10,
+    "missing_appliances": ["list any appliances that were removed or altered"],
     "issues": ["list any problems found, or empty array if none"]
   },
   "cleanup_effectiveness": {
@@ -642,8 +690,10 @@ Scoring guide:
 - 0-4: Poor, major problems
 
 Verdict guide:
-- PASS: Both scores >= 7
-- FAIL: Any score < 7`
+- PASS: ALL three scores >= 8 (cleanup_effectiveness MUST be >= 8)
+- FAIL: Any score < 8
+
+IMPORTANT: Be a strict inspector. It is better to FAIL a mediocre result than to PASS something that doesn't look dramatically cleaner.`
 
   try {
     const response = await fetch(
@@ -694,8 +744,12 @@ Verdict guide:
       const inspectionResult = JSON.parse(inspectionText)
       console.log('\n🔍 === 検品結果 ===')
       console.log('判定:', inspectionResult.verdict)
-      console.log('構造整合性:', inspectionResult.structural_integrity.score)
-      console.log('片付け効果:', inspectionResult.cleanup_effectiveness.score)
+      console.log('構造整合性:', inspectionResult.structural_integrity?.score)
+      console.log('🔥 家電保護:', inspectionResult.appliance_preservation?.score)
+      if (inspectionResult.appliance_preservation?.missing_appliances?.length > 0) {
+        console.log('⚠️ 消失した家電:', inspectionResult.appliance_preservation.missing_appliances.join(', '))
+      }
+      console.log('片付け効果:', inspectionResult.cleanup_effectiveness?.score)
       console.log('理由:', inspectionResult.overall_reason)
 
       if (inspectionResult.verdict === 'FAIL') {
@@ -887,6 +941,41 @@ app.post('/api/gemini/edit-image', requireGeminiApiKey, async (req, res) => {
       // 【v3.1】criticalAppliancesも含めてプロンプト生成
       let editPrompt = createEditPrompt(editType, removeList, roomType, protectedBoundaries, criticalAppliances)
 
+      // 【v3.5】Flash専用の片付け効果強化
+      // Flashモデルは変化が弱い傾向があるため、強い指示を追加
+      if (!useProModel) {
+        const flashCleanupBoost = `
+############################################################
+#  ⚡ FLASH MODEL: AGGRESSIVE CLEANUP REQUIRED ⚡           #
+############################################################
+
+THIS IMAGE MUST LOOK DRAMATICALLY DIFFERENT AFTER CLEANING.
+A subtle change is NOT acceptable. The transformation must be OBVIOUS.
+
+🎯 YOUR MISSION: Make this room look like a PROFESSIONAL CLEANER spent 2 hours here.
+
+REMOVE AGGRESSIVELY:
+✗ ALL papers, documents, mail on surfaces → REMOVE COMPLETELY
+✗ ALL dishes, cups, bottles → REMOVE COMPLETELY
+✗ ALL clothes, bags, personal items → REMOVE COMPLETELY
+✗ ALL small clutter and random objects → REMOVE COMPLETELY
+✗ ALL trash and packaging → REMOVE COMPLETELY
+
+RESULT REQUIRED:
+✓ Countertops: 90% EMPTY (only fixed appliances remain)
+✓ Tables: COMPLETELY CLEAR
+✓ Floor: NO loose items visible
+✓ The "BEFORE vs AFTER" difference must be SHOCKING
+
+IF THE OUTPUT LOOKS SIMILAR TO INPUT → THIS IS A FAILURE
+
+############################################################
+
+`
+        editPrompt = flashCleanupBoost + editPrompt
+        console.log('⚡ Flash片付け強化ブースト適用')
+      }
+
       // リトライ時は修正指示を先頭に追加 + 保護強調
       if (fixInstruction) {
         editPrompt = `
@@ -913,17 +1002,20 @@ ${editPrompt}`
       }
 
       // 【戦略3】temperature設定
-      // - リトライ時: 0.1に強制（超保守的）
+      // - リトライ時: 低温度で保守的に
       // - 通常時: モデルとeditTypeに応じて設定
+      // 【v3.5】Flash品質向上: 温度を下げて安定化（Pro並みの品質を目指す）
       let temperature
       if (isRetry) {
-        // 【v3.1】リトライ時は低温度で保守的に（ただし0.3で変化は許容）
         temperature = 0.3
         console.log('🔒 リトライモード: temperature 0.3（保守的だが変化は許容）')
+      } else if (useProModel) {
+        // Pro: 低温度で高品質・安定
+        temperature = editType === 'future_vision_stronger' ? 0.5 : 0.4
       } else {
-        // 【v3.2】より大きな変化を促すため temperature を上げる
-        // 0.7-0.8 で劇的な片付け効果を狙う
-        temperature = editType === 'future_vision_stronger' ? 0.8 : 0.7
+        // Flash: 片付け効果を出すため温度を戻す（低すぎると変化が弱い）
+        temperature = editType === 'future_vision_stronger' ? 0.8 : 0.65
+        console.log('⚡ Flash片付け強化モード: temperature', temperature)
       }
 
       // 【v3.2】モデル選択 - 高画質モードで Gemini 3 Pro Image を使用
@@ -1348,30 +1440,105 @@ app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => 
 - 具体的で実行しやすいアドバイス
 - 小さな成功体験を大切にする`
 
-    const analyzePrompt = `【TASK】Analyze this room and identify cleanup spots.
+    const analyzePrompt = `【TASK】部屋を分析し、ゲシュタルト心理学に基づくマイクロ片付けタスクを提案してください。
 
-【OUTPUT FORMAT - JSON only, no extra text】
+【最重要：見逃し禁止】
+画像を隅々まで注意深く観察し、テーブルや床の上にある全てのアイテムを検出してください。
+小さいものも、部分的にしか見えないものも、全て拾い上げること。
+
+チェックリスト（見落としやすいもの）:
+- 飲み物（コップ、ペットボトル、缶）
+- 食べ物・お菓子
+- リモコン
+- スマートフォン、タブレット、充電器
+- メガネ、メガネケース
+- ティッシュ箱、ティッシュのゴミ
+- 本、雑誌、新聞
+- 書類、封筒、チラシ、レシート
+- ペン、ハサミ、文房具
+- 化粧品、ハンドクリーム
+- 鍵、財布
+- ケーブル、イヤホン
+- 袋、箱
+
+【重要】
+- 各タスクは30秒〜2分で完了でき、視覚的な「秩序感」の向上が著しいものにする
+- 8〜12個のタスクを生成する（少なすぎは禁止）
+- テーブルの上が完全に片付くまでのステップを網羅する
+
+【カテゴリー別のアクション例】
+■ 書類・紙類 (documents)
+  - 「バラバラの紙を1つの束にまとめ、角を机の角に合わせる」(30秒)
+  - 「DMやチラシを、大きいものから順に重ね直す」(60秒)
+  - 「書類の向きを揃えて一箇所に重ねる」(60秒)
+
+■ 衣類・布製品 (clothes)
+  - 「床の衣類をベッドの上かカゴに集める」(60秒)
+  - 「ハンガーの衣類の向きを揃える」(90秒)
+
+■ 食器・キッチン用品 (kitchen)
+  - 「シンクの食器を重ねられるもの同士で積み上げる」(60秒)
+  - 「同じ素材のものを集める（ガラス、陶器等）」(90秒)
+
+■ 文房具・おもちゃ (stationery)
+  - 「赤いものだけをペン立てに戻す」(30秒)
+  - 「散らばった小物を部屋の中央に集める」(60秒)
+
+【OUTPUT FORMAT - JSON only】
 {
   "spots": [
     {
-      "location": "場所名",
+      "category": "documents/clothes/kitchen/stationery/other",
+      "location": "場所名（例：テーブルの上）",
       "items": "散らかっているもの",
-      "action": "具体的なアクション",
-      "priority": "high/medium/low",
-      "estimatedTime": "推定時間"
+      "action": "30秒〜2分でできる具体的なアクション",
+      "principle": "適用するゲシュタルト法則（近接/類同/閉合/共通運命）",
+      "visualEffect": "視覚的効果の説明（丁寧語で。例：輪郭が明確になります、ノイズが減ります）",
+      "estimatedTime": "30秒/60秒/90秒/2分"
     }
   ],
-  "totalEstimatedTime": "全体時間",
-  "encouragement": "励ましの言葉"
+  "totalEstimatedTime": "全体の推定時間",
+  "encouragement": "温かい励ましの言葉（日本語）"
 }
 
-【PRIORITY】
-- high: 2分以内
-- medium: 5分程度
-- low: 10分以上`
+【ルール】
+- 各タスクは2分以内で完了できるものに限定
+- 「内容の確認」や「判断」を必要としないアクションにする
+- 「幾何学的な整合」や「グルーピング」に特化する
+- visualEffectは丁寧語（です・ます調）で書く
+- クリップ、輪ゴム、収納ボックス等の道具を必要とするアクションは避ける
+- 「重ねる」「揃える」「集める」「立てる」など道具不要のアクションを優先する
 
+【タスク優先順位 - 画像に実際に見えるものだけを対象にすること】
+※以下は「もし見えたら」の条件付きルール。見えないものはタスクに含めないこと。
+
+1. ゴミが見える場合のみ → 最初のタスク：「ゴミをゴミ箱に捨てる」（30秒）
+2. 別の場所にあるべきものが見える場合のみ → 「〇〇を△△へ移動する」
+   - テーブルやデスクに食器・コップがある → 「食器をキッチンへ持っていく」
+   - リビングに洗濯物がある → 「洗濯物を寝室へ移動する」
+   - 調味料がダイニングにある → 「調味料をキッチンへ戻す」
+3. その後、整理・グルーピングのタスク
+
+【絶対ルール】
+- 画像に写っていないものをタスクに含めてはいけない（存在しないアイテムの捏造は厳禁）
+- 推測や一般的なアドバイスは禁止
+- 実際に見えるアイテムだけを具体的に指示する
+- 「小物」「雑貨」「もの」などの曖昧な表現は禁止
+- 必ず具体的なアイテム名を使う（例：リモコン、ペン、本、マグカップ、ティッシュ箱など）
+- ユーザーが「あ、これのことだ」とすぐ分かる表現にする
+
+【アクションのルール】
+- 食器、コップ、調味料、食べ物 → 「キッチンへ持っていく」
+- 衣類、タオル → 「洗濯カゴへ入れる」または「クローゼットへ持っていく」
+- 本、雑誌 → 「本棚へ戻す」または「重ねて端に寄せる」
+- 書類、紙 → 「重ねて揃える」
+- ゴミ → 「ゴミ箱へ捨てる」
+- その他 → 「テーブルの端に揃えて置く」
+※「ラベルを揃える」「向きを変える」などの細かい整頓より、まず「あるべき場所へ移動」を優先する`
+
+    // マイクロタスク分析
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -1443,6 +1610,17 @@ app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => 
         spots: [],
       })
     }
+
+    // マイクロタスク分析結果をログ出力
+    console.log('\n📋 === マイクロタスク分析結果 ===')
+    console.log('タスク数:', analysisResult.spots?.length || 0)
+    if (analysisResult.spots) {
+      analysisResult.spots.forEach((spot, i) => {
+        console.log(`  ${i + 1}. [${spot.category}] ${spot.items} → ${spot.action}`)
+      })
+    }
+    console.log('合計時間:', analysisResult.totalEstimatedTime)
+    console.log('================================\n')
 
     res.json({
       success: true,

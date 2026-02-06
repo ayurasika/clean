@@ -276,6 +276,39 @@ const getPriorityLabel = (priority) => {
   }
 }
 
+// カテゴリーアイコンを返す
+const getCategoryIcon = (category) => {
+  switch (category) {
+    case 'documents': return '📄'
+    case 'clothes': return '👕'
+    case 'kitchen': return '🍽️'
+    case 'stationery': return '✏️'
+    default: return '📦'
+  }
+}
+
+// カテゴリーの背景色を返す
+const getCategoryBgColor = (category) => {
+  switch (category) {
+    case 'documents': return 'bg-amber-50'
+    case 'clothes': return 'bg-blue-50'
+    case 'kitchen': return 'bg-orange-50'
+    case 'stationery': return 'bg-purple-50'
+    default: return 'bg-beige-soft'
+  }
+}
+
+// カテゴリーの日本語ラベル
+const getCategoryLabel = (category) => {
+  switch (category) {
+    case 'documents': return '書類・紙類'
+    case 'clothes': return '衣類・布製品'
+    case 'kitchen': return '食器・キッチン'
+    case 'stationery': return '文房具・小物'
+    default: return 'その他'
+  }
+}
+
 // STEP 3: 戦略的分析を開始（Gemini統一版）
 const startStrategicAnalysis = async () => {
   if (!capturedImage.value) return
@@ -629,7 +662,7 @@ onUnmounted(() => {
             <div class="flex justify-between items-end px-1">
               <div class="flex items-center gap-2">
                 <span class="flex h-2 w-2 rounded-full bg-sage-green opacity-70 animate-pulse"></span>
-                <p class="text-text-main text-sm font-medium">家具を整頓中...</p>
+                <p class="text-text-main text-sm font-medium">お片付け中...</p>
               </div>
             </div>
             <div class="h-3.5 w-full rounded-full bg-soft-beige overflow-hidden p-0.5 border border-white/50">
@@ -785,95 +818,139 @@ onUnmounted(() => {
       <!-- ==================== 片付け場所分析中 ==================== -->
       <div
         v-if="currentPhase === 'analyzing_spots'"
-        class="absolute inset-0 bg-gradient-to-b from-amber-600 to-background-dark flex items-center justify-center z-50"
+        class="absolute inset-0 bg-cream flex items-center justify-center z-50"
       >
-        <div class="text-white text-center px-6">
+        <div class="text-center px-6">
           <div class="relative w-28 h-28 mx-auto mb-8">
-            <div class="absolute inset-0 rounded-full border-2 border-white/20"></div>
-            <div class="absolute inset-0 rounded-full border-2 border-t-white animate-spin"></div>
+            <div class="absolute inset-0 rounded-full bg-beige-soft soft-shadow"></div>
+            <div class="absolute inset-0 rounded-full border-2 border-sage-muted/30"></div>
+            <div class="absolute inset-0 rounded-full border-2 border-t-sage-muted animate-spin"></div>
             <div class="absolute inset-0 flex items-center justify-center">
-              <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg class="w-10 h-10 text-sage-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
           </div>
-          <p class="text-2xl font-semibold mb-2 tracking-wide">分析中...</p>
-          <p class="text-sm text-white/60 tracking-wide">効果的な片付けポイントを探しています</p>
+          <p class="text-text-main text-2xl font-light mb-2 tracking-wide">分析中...</p>
+          <p class="text-sm text-text-light tracking-wide font-light">効果的な片付けポイントを探しています</p>
         </div>
       </div>
 
       <!-- ==================== 片付け場所の結果表示 ==================== -->
       <div
         v-if="currentPhase === 'spots_result'"
-        class="absolute inset-0 bg-background-dark flex flex-col overflow-hidden"
+        class="absolute inset-0 bg-cream flex flex-col overflow-hidden"
       >
         <!-- Header -->
-        <div class="relative h-36 flex-shrink-0">
-          <img
-            :src="capturedImage"
-            alt="撮影した部屋"
-            class="w-full h-full object-cover opacity-40"
-          />
-          <div class="absolute inset-0 bg-gradient-to-b from-transparent to-background-dark"></div>
-          <div class="absolute bottom-4 left-6 right-6 flex justify-between items-end">
-            <div>
-              <p class="text-white/50 text-[10px] tracking-widest uppercase">Total Time</p>
-              <p class="text-white text-xl font-semibold">{{ totalEstimatedTime }}</p>
+        <header class="flex items-center bg-cream/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4 justify-between">
+          <button @click="resetToCamera" class="flex size-10 items-center justify-center rounded-full bg-beige-soft soft-shadow">
+            <svg class="w-5 h-5 text-text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h2 class="text-text-main text-sm font-light leading-tight tracking-[0.15em] flex-1 text-center">マイクロタスク</h2>
+          <div class="w-10"></div>
+        </header>
+
+        <!-- 未来予想図（モチベーション） -->
+        <div v-if="futureVisionUrl" class="px-6 pt-2 pb-4">
+          <div class="bg-white rounded-3xl soft-shadow overflow-hidden border border-white/50">
+            <div class="relative h-40">
+              <img :src="futureVisionUrl" alt="片付け後のイメージ" class="w-full h-full object-cover" />
+              <div class="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent"></div>
             </div>
-            <div class="text-right">
-              <p class="text-white/50 text-[10px] tracking-widest uppercase">Progress</p>
-              <p class="text-white text-xl font-semibold">{{ completedSpots.length }}<span class="text-white/50 text-sm"> / {{ cleanupSpots.length }}</span></p>
+            <div class="px-5 pb-5 -mt-4 relative">
+              <p class="text-text-light text-[10px] tracking-widest uppercase mb-1">Goal Image</p>
+              <p class="text-text-main text-sm font-light leading-relaxed">
+                この状態を目指して、まずは一つ目からやってみましょう
+              </p>
             </div>
           </div>
         </div>
 
-        <!-- 励ましメッセージ -->
-        <div class="px-6 py-4 glass-panel mx-6 -mt-2 rounded-2xl border border-white/10">
-          <p class="text-white/80 text-sm text-center font-light">{{ encouragement }}</p>
+        <!-- サマリーカード -->
+        <div class="px-6 pb-4">
+          <div class="bg-beige-soft p-6 rounded-3xl soft-shadow">
+            <div class="flex justify-between items-center mb-4">
+              <div>
+                <p class="text-text-light text-[10px] tracking-widest uppercase mb-1">Total Time</p>
+                <p class="text-text-main text-2xl font-light">{{ totalEstimatedTime }}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-text-light text-[10px] tracking-widest uppercase mb-1">Progress</p>
+                <p class="text-sage-muted text-2xl font-light">{{ completedSpots.length }}<span class="text-text-light text-sm"> / {{ cleanupSpots.length }}</span></p>
+              </div>
+            </div>
+            <!-- プログレスバー -->
+            <div class="w-full h-2 bg-white rounded-full soft-inset overflow-hidden">
+              <div
+                class="h-full bg-sage-muted rounded-full transition-all duration-500"
+                :style="{ width: cleanupSpots.length > 0 ? `${(completedSpots.length / cleanupSpots.length) * 100}%` : '0%' }"
+              ></div>
+            </div>
+          </div>
         </div>
 
         <!-- 片付けリスト -->
-        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div class="flex-1 overflow-y-auto px-6 pb-4 space-y-3">
           <div
             v-for="(spot, index) in cleanupSpots"
             :key="index"
             @click="toggleSpotComplete(index)"
-            class="glass-panel rounded-2xl p-4 cursor-pointer transition-all duration-300 border"
-            :class="completedSpots.includes(index) ? 'opacity-50 border-primary/50' : 'border-white/10'"
+            class="bg-white rounded-3xl p-5 cursor-pointer transition-all duration-300 soft-shadow border"
+            :class="completedSpots.includes(index) ? 'opacity-50 border-sage-muted/50' : 'border-white/50'"
           >
-            <div class="flex items-start gap-3">
+            <div class="flex items-start gap-4">
+              <!-- カテゴリーアイコン -->
               <div
-                class="w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5"
-                :class="completedSpots.includes(index) ? 'bg-primary border-primary' : 'border-white/30'"
+                class="w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center soft-inset"
+                :class="getCategoryBgColor(spot.category)"
               >
-                <svg
-                  v-if="completedSpots.includes(index)"
-                  class="w-3.5 h-3.5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
+                <span class="text-xl">{{ getCategoryIcon(spot.category) }}</span>
               </div>
 
-              <div class="flex-1">
-                <div class="flex items-center gap-2 mb-1">
-                  <span
-                    class="text-[10px] px-2 py-0.5 rounded-full text-white font-medium tracking-wide uppercase"
-                    :class="getPriorityColor(spot.priority)"
-                  >
-                    {{ getPriorityLabel(spot.priority) }}
+              <div class="flex-1 min-w-0">
+                <!-- 時間とカテゴリー -->
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-[10px] px-2 py-1 rounded-full bg-sage-muted/10 text-sage-muted font-medium tracking-wide">
+                    {{ spot.estimatedTime }}
                   </span>
-                  <span class="text-[10px] text-white/40">{{ spot.estimatedTime }}</span>
+                  <span class="text-[10px] text-text-light tracking-wide">{{ getCategoryLabel(spot.category) }}</span>
                 </div>
-                <p class="text-white font-medium text-sm mb-1">{{ spot.location }}</p>
-                <p class="text-white/40 text-xs mb-2">{{ spot.items }}</p>
-                <p
-                  class="text-primary text-sm"
-                  :class="{ 'line-through text-white/30': completedSpots.includes(index) }"
+
+                <!-- アイテム -->
+                <p class="text-text-light text-xs mb-3">{{ spot.items }}</p>
+
+                <!-- アクション（メイン） -->
+                <div
+                  class="flex items-start gap-2 p-3 rounded-2xl"
+                  :class="completedSpots.includes(index) ? 'bg-sage-muted/10' : 'bg-beige-soft'"
                 >
-                  {{ spot.action }}
+                  <div
+                    class="w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5"
+                    :class="completedSpots.includes(index) ? 'bg-sage-muted border-sage-muted' : 'border-text-light/30'"
+                  >
+                    <svg
+                      v-if="completedSpots.includes(index)"
+                      class="w-3 h-3 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p
+                    class="text-sm font-light leading-relaxed"
+                    :class="completedSpots.includes(index) ? 'line-through text-text-light/50' : 'text-text-main'"
+                  >
+                    {{ spot.action }}
+                  </p>
+                </div>
+
+                <!-- 視覚効果の説明（あれば） -->
+                <p v-if="spot.visualEffect" class="text-[11px] text-sage-muted mt-2 font-light">
+                  ✨ {{ spot.visualEffect }}
                 </p>
               </div>
             </div>
@@ -881,18 +958,18 @@ onUnmounted(() => {
         </div>
 
         <!-- 下部ボタン -->
-        <div class="flex-shrink-0 p-6 pb-10">
+        <div class="flex-shrink-0 p-6 pb-10 bg-gradient-to-t from-cream via-cream to-transparent">
           <button
             v-if="completedSpots.length === cleanupSpots.length && cleanupSpots.length > 0"
             @click="goHome"
-            class="w-full py-4 rounded-full bg-primary text-white text-sm tracking-[0.15em] font-semibold soft-glow uppercase"
+            class="w-full py-4 rounded-full bg-sage-muted text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98] uppercase"
           >
             完了！ホームへ戻る
           </button>
           <button
             v-else
             @click="resetToCamera"
-            class="w-full py-3 glass-panel text-white/60 rounded-full text-xs tracking-wide font-medium border border-white/10"
+            class="w-full py-3 rounded-full bg-beige-soft text-text-light text-xs tracking-[0.1em] font-light border border-white/40 transition-transform active:scale-[0.98]"
           >
             最初からやり直す
           </button>
@@ -902,31 +979,38 @@ onUnmounted(() => {
       <!-- ==================== 戦略的分析中 ==================== -->
       <div
         v-if="currentPhase === 'analyzing'"
-        class="absolute inset-0 bg-gradient-to-b from-emerald-600 to-background-dark flex items-center justify-center z-50"
+        class="absolute inset-0 bg-cream flex items-center justify-center z-50"
       >
-        <div class="text-white text-center px-6">
+        <div class="text-center px-6">
           <div class="relative w-28 h-28 mx-auto mb-8">
-            <div class="absolute inset-0 rounded-full border-2 border-white/20"></div>
-            <div class="absolute inset-0 rounded-full border-2 border-t-white animate-spin"></div>
-            <div class="absolute inset-0 flex items-center justify-center text-4xl">
-              🧠
+            <div class="absolute inset-0 rounded-full bg-beige-soft soft-shadow"></div>
+            <div class="absolute inset-0 rounded-full border-2 border-sage-muted/30"></div>
+            <div class="absolute inset-0 rounded-full border-2 border-t-sage-muted animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <svg class="w-10 h-10 text-sage-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
             </div>
           </div>
-          <p class="text-2xl font-semibold mb-2 tracking-wide">戦略を立案中...</p>
-          <p class="text-sm text-white/60 tracking-wide">最適なエリアを選定しています</p>
+          <p class="text-text-main text-2xl font-light mb-2 tracking-wide">戦略を考えています...</p>
+          <p class="text-sm text-text-light tracking-wide font-light">効果的な片付けポイントを探しています</p>
         </div>
       </div>
 
       <!-- ==================== 分析完了 ==================== -->
       <div
         v-if="currentPhase === 'complete'"
-        class="absolute inset-0 bg-gradient-to-b from-primary to-background-dark flex items-center justify-center z-50"
+        class="absolute inset-0 bg-cream flex items-center justify-center z-50"
       >
-        <div class="text-white text-center px-6">
-          <div class="text-6xl mb-6">🎉</div>
-          <p class="text-2xl font-semibold mb-2 tracking-wide">準備完了！</p>
-          <p class="text-sm text-white/60 tracking-wide">最適なプランができました</p>
-          <p class="text-xs text-white/40 mt-6">ホーム画面に移動します...</p>
+        <div class="text-center px-6">
+          <div class="w-20 h-20 mx-auto mb-6 bg-sage-muted rounded-full soft-shadow flex items-center justify-center">
+            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p class="text-text-main text-2xl font-light mb-2 tracking-wide">準備完了！</p>
+          <p class="text-sm text-text-light tracking-wide font-light">最適なプランができました</p>
+          <p class="text-xs text-text-light/60 mt-6 font-light">ホーム画面に移動します...</p>
         </div>
       </div>
 
@@ -995,6 +1079,15 @@ onUnmounted(() => {
 }
 .bg-sage-muted {
   background-color: #9EB3A2;
+}
+.bg-beige-soft {
+  background-color: #F2EFE9;
+}
+.border-sage-muted {
+  border-color: #9EB3A2;
+}
+.border-sage-muted\/30 {
+  border-color: rgba(158, 179, 162, 0.3);
 }
 .text-sage-green {
   color: #8DAA91;

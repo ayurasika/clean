@@ -70,7 +70,7 @@ const greeting = computed(() => {
         <!-- お部屋の散らかり具合カード（分析後のみ表示） -->
         <div v-if="hasAnalysis" class="bg-beige-soft p-8 rounded-3xl soft-shadow mb-8">
           <div class="flex justify-between items-end mb-4">
-            <span class="text-text-main text-sm tracking-wide">お部屋の散らかり具合</span>
+            <span class="text-text-main text-sm tracking-wide">現在の散らかり具合</span>
             <span class="text-sage-muted text-2xl font-light">{{ dirtyRoomLevel }}<span class="text-xs ml-0.5">%</span></span>
           </div>
           <div class="w-full h-3 progress-bar-bg rounded-full soft-inset relative overflow-hidden">
@@ -148,7 +148,7 @@ const greeting = computed(() => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
             <div>
-              <p class="text-text-main text-xs font-normal mb-1">なぜここから？</p>
+              <p class="text-text-main text-xs font-normal mb-1"></p>
               <p class="text-text-light text-xs font-light leading-relaxed">{{ zoneReason }}</p>
             </div>
           </div>
