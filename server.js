@@ -1710,40 +1710,31 @@ app.post('/api/chat-address', requireGeminiApiKey, async (req, res) => {
 - カテゴリ: ${category || '不明'}`
 
     // 会話履歴を Gemini の contents 形式に変換
+    // Gemini API は必ず user ロールから始まる必要がある
     const contents = []
 
-    // 初回メッセージ（画像付き）
+    // 最初のユーザーメッセージ（画像付き・必ず先頭に置く）
+    const initialParts = [
+      { text: `この部屋の写真を見て、「${itemName}」の住所（定位置）を一緒に決めたいです。まず最初の提案やヒアリングをお願いします。` },
+    ]
+    if (base64Data) {
+      initialParts.push({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: base64Data,
+        },
+      })
+    }
+    contents.push({ role: 'user', parts: initialParts })
+
+    // 会話履歴を追加（あれば）
     if (messages && messages.length > 0) {
       for (const msg of messages) {
-        const parts = [{ text: msg.text }]
-        // 最初のユーザーメッセージに画像を添付
-        if (msg.role === 'user' && contents.length === 0 && base64Data) {
-          parts.push({
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Data,
-            },
-          })
-        }
         contents.push({
           role: msg.role === 'ai' ? 'model' : 'user',
-          parts,
+          parts: [{ text: msg.text }],
         })
       }
-    } else {
-      // 初回: 画像を見てアイテムについて会話を始める
-      const parts = [
-        { text: `この部屋の写真を見て、「${itemName}」の住所（定位置）を一緒に決めたいです。まず最初の提案やヒアリングをお願いします。` },
-      ]
-      if (base64Data) {
-        parts.push({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: base64Data,
-          },
-        })
-      }
-      contents.push({ role: 'user', parts })
     }
 
     const response = await fetch(
