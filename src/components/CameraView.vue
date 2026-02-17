@@ -1216,10 +1216,10 @@ onUnmounted(() => {
                   </svg>
                 </div>
                 <div class="bg-white rounded-2xl rounded-bl-md px-4 py-3.5 soft-shadow border border-white/50">
-                  <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 0ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 200ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 400ms"></div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="typing-dot typing-dot-1"></span>
+                    <span class="typing-dot typing-dot-2"></span>
+                    <span class="typing-dot typing-dot-3"></span>
                   </div>
                 </div>
               </div>
@@ -1620,11 +1620,20 @@ onUnmounted(() => {
 
 /* ==================== タイピングインジケーター ==================== */
 .typing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #9EB3A2;
+  opacity: 0.4;
   animation: typing-wave 1.4s ease-in-out infinite;
 }
+.typing-dot-1 { animation-delay: 0s; }
+.typing-dot-2 { animation-delay: 0.2s; }
+.typing-dot-3 { animation-delay: 0.4s; }
 @keyframes typing-wave {
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
+  30% { opacity: 1; transform: translateY(-5px); }
 }
 
 /* ==================== チャット画面のセーフエリア ==================== */
