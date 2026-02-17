@@ -1190,8 +1190,8 @@ onUnmounted(() => {
               <!-- AI メッセージ -->
               <div v-if="msg.role === 'ai'" class="flex items-end gap-2 max-w-[85%]">
                 <div class="w-7 h-7 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
-                  <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
                 </div>
                 <div class="bg-white rounded-2xl rounded-bl-md p-3 soft-shadow border border-white/50 min-w-0">
@@ -1211,15 +1211,15 @@ onUnmounted(() => {
             <div v-if="isChatLoading" class="flex justify-start">
               <div class="flex items-end gap-2">
                 <div class="w-7 h-7 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
-                  <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
                 </div>
-                <div class="bg-white rounded-2xl rounded-bl-md p-3 soft-shadow border border-white/50">
-                  <div class="flex gap-1.5">
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 0ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 150ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 300ms"></div>
+                <div class="bg-white rounded-2xl rounded-bl-md px-4 py-3.5 soft-shadow border border-white/50">
+                  <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 200ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-sage-muted/50 typing-dot" style="animation-delay: 400ms"></div>
                   </div>
                 </div>
               </div>
@@ -1616,6 +1616,15 @@ onUnmounted(() => {
   0% { opacity: 0; max-height: 0; transform: translateY(-10px); }
   100% { opacity: 1; max-height: 500px; transform: translateY(0); }
 
+}
+
+/* ==================== タイピングインジケーター ==================== */
+.typing-dot {
+  animation: typing-wave 1.4s ease-in-out infinite;
+}
+@keyframes typing-wave {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-4px); }
 }
 
 /* ==================== チャット画面のセーフエリア ==================== */
