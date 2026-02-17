@@ -956,7 +956,7 @@ onUnmounted(() => {
       <!-- ==================== 片付け場所の結果表示 ==================== -->
       <div
         v-if="currentPhase === 'spots_result'"
-        class="absolute inset-0 bg-cream flex flex-col overflow-hidden"
+        class="absolute inset-0 bg-cream flex flex-col"
       >
         <!-- Header -->
         <header class="flex items-center bg-cream/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4 justify-between">
@@ -968,6 +968,9 @@ onUnmounted(() => {
           <h2 class="text-text-main text-sm font-light leading-tight tracking-[0.15em] flex-1 text-center">マイクロタスク</h2>
           <div class="w-10"></div>
         </header>
+
+        <!-- スクロール可能なコンテンツ領域 -->
+        <div class="flex-1 overflow-y-auto">
 
         <!-- 未来予想図（モチベーション） -->
         <div v-if="futureVisionUrl" class="px-6 pt-2 pb-4">
@@ -1009,7 +1012,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 片付けリスト -->
-        <div class="flex-1 overflow-y-auto px-6 pb-4 space-y-3">
+        <div class="px-6 pb-4 space-y-3">
           <div
             v-for="(spot, index) in cleanupSpots"
             :key="index"
@@ -1131,6 +1134,8 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+
+        </div><!-- スクロール可能なコンテンツ領域の終わり -->
 
         <!-- 下部ボタン -->
         <div class="flex-shrink-0 p-6 pb-10 bg-gradient-to-t from-cream via-cream to-transparent">
