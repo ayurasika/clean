@@ -13,6 +13,11 @@ import express from 'express'
 import cors from 'cors'
 import fetch from 'node-fetch'
 import dotenv from 'dotenv'
+import { readFileSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 dotenv.config()
 
@@ -1692,18 +1697,17 @@ app.post('/api/chat-address', requireGeminiApiKey, async (req, res) => {
     // 画像データの準備（初回のみ画像を含める）
     const base64Data = imageBase64 ? imageBase64.replace(/^data:image\/[a-z]+;base64,/, '') : null
 
-    const systemInstruction = `あなたは「かたづけナビ AI」の片付けアドバイザーです。
-ユーザーが片付け中に「住所（＝定位置）が決まっていないアイテム」の置き場所を一緒に考えます。
+    // プロンプトファイルから思考フレームワークを読み込む
+    const promptPath = resolve(__dirname, 'prompts/address-chat.md')
+    let basePrompt
+    try {
+      basePrompt = readFileSync(promptPath, 'utf-8')
+    } catch (e) {
+      console.warn('⚠️ prompts/address-chat.md が見つかりません。デフォルトプロンプトを使用します')
+      basePrompt = 'あなたは片付けアドバイザーです。アイテムの置き場所を一緒に考えてください。'
+    }
 
-## あなたの役割
-- ユーザーの部屋の写真を見て、空間の特徴や既にある収納を把握する
-- アイテムの使用頻度・用途・サイズ感を会話から引き出す
-- 具体的な置き場所を一緒に決める（「棚の2段目」「引き出しの右側」のように具体的に）
-
-## 会話のスタイル
-- フレンドリーで短めに（1-3文程度）
-- 押し付けずに提案する（「〜はどうですか？」）
-- ユーザーの生活習慣に合わせる
+    const systemInstruction = `${basePrompt}
 
 ## 今回のアイテム
 - 名前: ${itemName}
