@@ -131,6 +131,15 @@ const finishAddressChat = () => {
   chatMessages.value = []
 }
 
+// 後回しボックスへスクロール
+const scrollToDeferredBox = () => {
+  const el = document.getElementById('deferred-box')
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    showDeferredBox.value = true
+  }
+}
+
 // チャットを閉じる（住所未決定）
 const closeChatWithoutDecision = () => {
   selectedDeferredItem.value = null
@@ -1020,13 +1029,23 @@ onUnmounted(() => {
             class="bg-white rounded-3xl p-5 cursor-pointer transition-all duration-300 soft-shadow border"
             :class="completedSpots.includes(index) ? 'opacity-50 border-sage-muted/50' : 'border-white/50'"
           >
-            <div class="flex items-start gap-4">
-              <!-- カテゴリーアイコン -->
-              <div
-                class="w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center soft-inset"
-                :class="getCategoryBgColor(spot.category)"
+            <div class="flex items-start gap-3">
+              <!-- 後回しボタン（正方形） -->
+              <button
+                v-if="!completedSpots.includes(index)"
+                @click.stop="deferItem(index)"
+                class="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center border border-amber-200 bg-amber-50 transition-all active:scale-90 hover:bg-amber-100"
+                title="後回しボックスへ"
               >
-                <span class="text-xl">{{ getCategoryIcon(spot.category) }}</span>
+                <span class="text-lg">📦</span>
+              </button>
+              <div
+                v-else
+                class="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center bg-sage-muted/10"
+              >
+                <svg class="w-5 h-5 text-sage-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                </svg>
               </div>
 
               <div class="flex-1 min-w-0">
@@ -1039,7 +1058,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- アイテム -->
-                <p class="text-text-light text-xs mb-3">{{ spot.items }}</p>
+                <p class="text-text-light text-xs mb-2">{{ spot.items }}</p>
 
                 <!-- アクション（メイン） -->
                 <div
@@ -1072,24 +1091,15 @@ onUnmounted(() => {
                 <p v-if="spot.visualEffect" class="text-[11px] text-sage-muted mt-2 font-light">
                   ✨ {{ spot.visualEffect }}
                 </p>
-
-                <!-- 後回しボックスへボタン（所定の場所に戻すタスクのみ） -->
-                <button
-                  v-if="isReturnToPlaceTask(spot.action) && !completedSpots.includes(index)"
-                  @click.stop="deferItem(index)"
-                  class="mt-3 w-full py-2 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-light tracking-wide flex items-center justify-center gap-2 transition-all hover:bg-amber-100"
-                >
-                  <span class="text-base">📦</span>
-                  <span>住所が決まってない → 後回しボックスへ</span>
-                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 後回しボックスセクション（タスク完了後に表示） -->
+        <!-- 後回しボックスセクション -->
         <div
-          v-if="deferredItems.length > 0 && completedSpots.length === cleanupSpots.length"
+          v-if="deferredItems.length > 0"
+          id="deferred-box"
           class="flex-shrink-0 mx-6 mb-4"
         >
           <div class="bg-amber-50 rounded-3xl p-5 border border-amber-200">
@@ -1137,29 +1147,60 @@ onUnmounted(() => {
 
         </div><!-- スクロール可能なコンテンツ領域の終わり -->
 
-        <!-- 下部ボタン -->
-        <div class="flex-shrink-0 p-6 pb-10 bg-gradient-to-t from-cream via-cream to-transparent">
-          <button
-            v-if="completedSpots.length === cleanupSpots.length && cleanupSpots.length > 0 && deferredItems.length === 0"
-            @click="goHome"
-            class="w-full py-4 rounded-full bg-sage-muted text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98] uppercase"
-          >
-            完了！ホームへ戻る
-          </button>
-          <button
-            v-else-if="completedSpots.length === cleanupSpots.length && deferredItems.length > 0"
-            @click="goHome"
-            class="w-full py-4 rounded-full bg-amber-500 text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98]"
-          >
-            後回しボックスは後で整理する
-          </button>
-          <button
-            v-else
-            @click="resetToCamera"
-            class="w-full py-3 rounded-full bg-beige-soft text-text-light text-xs tracking-[0.1em] font-light border border-white/40 transition-transform active:scale-[0.98]"
-          >
-            最初からやり直す
-          </button>
+        <!-- 下部ナビゲーション -->
+        <div class="flex-shrink-0 bg-cream border-t border-white/40">
+          <!-- メインアクションボタン -->
+          <div class="px-6 pt-4 pb-2">
+            <button
+              v-if="completedSpots.length === cleanupSpots.length && cleanupSpots.length > 0 && deferredItems.length === 0"
+              @click="goHome"
+              class="w-full py-4 rounded-full bg-sage-muted text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98] uppercase"
+            >
+              完了！ホームへ戻る
+            </button>
+            <button
+              v-else-if="completedSpots.length === cleanupSpots.length && deferredItems.length > 0"
+              @click="scrollToDeferredBox"
+              class="w-full py-4 rounded-full bg-amber-500 text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98]"
+            >
+              後回しボックスを開く
+            </button>
+          </div>
+
+          <!-- ナビバー -->
+          <div class="flex items-center justify-around px-4 pb-8 pt-1">
+            <button @click="goHome" class="flex flex-col items-center gap-1 p-2 text-text-light">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              <span class="text-[9px] font-light tracking-tighter">ホーム</span>
+            </button>
+            <button @click="resetToCamera" class="flex flex-col items-center gap-1 p-2 text-text-light">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span class="text-[9px] font-light tracking-tighter">撮り直す</span>
+            </button>
+            <button
+              @click="scrollToDeferredBox"
+              class="flex flex-col items-center gap-1 p-2 relative"
+              :class="deferredItems.length > 0 ? 'text-amber-500' : 'text-text-light'"
+            >
+              <div class="relative">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                <span
+                  v-if="deferredItems.length > 0"
+                  class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center font-medium"
+                >
+                  {{ deferredItems.length }}
+                </span>
+              </div>
+              <span class="text-[9px] font-light tracking-tighter">後回し</span>
+            </button>
+          </div>
         </div>
       </div>
 
