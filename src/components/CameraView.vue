@@ -1030,20 +1030,20 @@ onUnmounted(() => {
             :class="completedSpots.includes(index) ? 'opacity-50 border-sage-muted/50' : 'border-white/50'"
           >
             <div class="flex items-start gap-3">
-              <!-- 後回しボタン（正方形） -->
+              <!-- 後回しボタン -->
               <button
                 v-if="!completedSpots.includes(index)"
                 @click.stop="deferItem(index)"
-                class="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center border border-amber-200 bg-amber-50 transition-all active:scale-90 hover:bg-amber-100"
-                title="後回しボックスへ"
+                class="w-16 flex-shrink-0 flex flex-col items-center justify-center gap-1 py-2.5 rounded-2xl border border-amber-200 bg-amber-50 transition-all active:scale-90 hover:bg-amber-100"
               >
-                <span class="text-lg">📦</span>
+                <span class="text-2xl">📦</span>
+                <span class="text-[9px] text-amber-600 font-medium leading-tight">後回し</span>
               </button>
               <div
                 v-else
-                class="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center bg-sage-muted/10"
+                class="w-16 flex-shrink-0 flex flex-col items-center justify-center gap-1 py-2.5 rounded-2xl bg-sage-muted/10"
               >
-                <svg class="w-5 h-5 text-sage-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-sage-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
