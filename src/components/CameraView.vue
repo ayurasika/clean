@@ -1132,108 +1132,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ==================== 住所相談チャット画面 ==================== -->
-        <div
-          v-if="selectedDeferredItem"
-          class="fixed inset-0 bg-cream z-[100] flex flex-col max-w-[480px] mx-auto"
-        >
-          <!-- チャットヘッダー -->
-          <header class="flex items-center bg-cream/80 backdrop-blur-md px-6 py-4 justify-between border-b border-amber-100">
-            <button @click="closeChatWithoutDecision" class="flex size-10 items-center justify-center rounded-full bg-beige-soft soft-shadow">
-              <svg class="w-5 h-5 text-text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div class="flex-1 text-center">
-              <p class="text-text-main text-sm font-medium">住所相談</p>
-              <p class="text-amber-600 text-xs font-light">{{ selectedDeferredItem.item }}</p>
-            </div>
-            <div class="w-10"></div>
-          </header>
-
-          <!-- チャットメッセージエリア -->
-          <div ref="chatScrollRef" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            <div
-              v-for="(msg, i) in chatMessages"
-              :key="i"
-              class="flex"
-              :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
-            >
-              <!-- AI アイコン -->
-              <div v-if="msg.role === 'ai'" class="flex items-end gap-2 max-w-[85%]">
-                <div class="w-8 h-8 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
-                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
-                  </svg>
-                </div>
-                <div class="bg-white rounded-2xl rounded-bl-md p-3.5 soft-shadow border border-white/50">
-                  <p class="text-text-main text-sm font-light leading-relaxed whitespace-pre-wrap">{{ msg.text }}</p>
-                </div>
-              </div>
-
-              <!-- ユーザーメッセージ -->
-              <div v-else class="max-w-[80%]">
-                <div class="bg-sage-muted text-white rounded-2xl rounded-br-md p-3.5">
-                  <p class="text-sm font-light leading-relaxed">{{ msg.text }}</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- ローディング表示 -->
-            <div v-if="isChatLoading" class="flex justify-start">
-              <div class="flex items-end gap-2">
-                <div class="w-8 h-8 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
-                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
-                  </svg>
-                </div>
-                <div class="bg-white rounded-2xl rounded-bl-md p-3.5 soft-shadow border border-white/50">
-                  <div class="flex gap-1.5">
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 0ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 150ms"></div>
-                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 300ms"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 住所決定ボタン + 入力エリア -->
-          <div class="flex-shrink-0 border-t border-amber-100 bg-cream px-4 pb-8 pt-3">
-            <!-- 住所が決まったボタン -->
-            <button
-              @click="finishAddressChat"
-              class="w-full mb-3 py-3 rounded-full bg-sage-muted/10 text-sage-muted text-xs tracking-wide font-medium border border-sage-muted/30 transition-transform active:scale-[0.98]"
-            >
-              住所が決まった！
-            </button>
-
-            <!-- テキスト入力 -->
-            <div class="flex items-end gap-2">
-              <div class="flex-1 bg-white rounded-2xl soft-shadow border border-white/50 overflow-hidden">
-                <input
-                  v-model="chatInput"
-                  @keydown.enter="sendChatMessage"
-                  type="text"
-                  placeholder="メッセージを入力..."
-                  class="w-full px-4 py-3 text-sm text-text-main bg-transparent outline-none placeholder:text-text-light/50"
-                  :disabled="isChatLoading"
-                />
-              </div>
-              <button
-                @click="sendChatMessage"
-                :disabled="!chatInput.trim() || isChatLoading"
-                class="flex-shrink-0 w-10 h-10 rounded-full bg-sage-muted text-white flex items-center justify-center soft-shadow transition-opacity"
-                :class="(!chatInput.trim() || isChatLoading) ? 'opacity-40' : 'opacity-100 active:scale-95'"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- 下部ボタン -->
         <div class="flex-shrink-0 p-6 pb-10 bg-gradient-to-t from-cream via-cream to-transparent">
           <button
@@ -1257,6 +1155,109 @@ onUnmounted(() => {
           >
             最初からやり直す
           </button>
+        </div>
+      </div>
+
+      <!-- ==================== 住所相談チャット画面 ==================== -->
+      <div
+        v-if="selectedDeferredItem"
+        class="fixed inset-0 z-[100] bg-cream flex flex-col"
+        style="height: 100dvh;"
+      >
+        <div class="flex flex-col h-full max-w-[480px] mx-auto w-full">
+          <!-- チャットヘッダー -->
+          <header class="flex-shrink-0 flex items-center bg-cream/80 backdrop-blur-md px-4 py-3 justify-between border-b border-amber-100 safe-top">
+            <button @click="closeChatWithoutDecision" class="flex size-10 items-center justify-center rounded-full bg-beige-soft soft-shadow">
+              <svg class="w-5 h-5 text-text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div class="flex-1 text-center min-w-0 px-2">
+              <p class="text-text-main text-sm font-medium">住所相談</p>
+              <p class="text-amber-600 text-xs font-light truncate">{{ selectedDeferredItem.item }}</p>
+            </div>
+            <div class="w-10 flex-shrink-0"></div>
+          </header>
+
+          <!-- チャットメッセージエリア -->
+          <div ref="chatScrollRef" class="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+            <div
+              v-for="(msg, i) in chatMessages"
+              :key="i"
+              class="flex"
+              :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+            >
+              <!-- AI メッセージ -->
+              <div v-if="msg.role === 'ai'" class="flex items-end gap-2 max-w-[85%]">
+                <div class="w-7 h-7 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  </svg>
+                </div>
+                <div class="bg-white rounded-2xl rounded-bl-md p-3 soft-shadow border border-white/50 min-w-0">
+                  <p class="text-text-main text-sm font-light leading-relaxed whitespace-pre-wrap break-words">{{ msg.text }}</p>
+                </div>
+              </div>
+
+              <!-- ユーザーメッセージ -->
+              <div v-else class="max-w-[80%]">
+                <div class="bg-sage-muted text-white rounded-2xl rounded-br-md p-3">
+                  <p class="text-sm font-light leading-relaxed break-words">{{ msg.text }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ローディング表示 -->
+            <div v-if="isChatLoading" class="flex justify-start">
+              <div class="flex items-end gap-2">
+                <div class="w-7 h-7 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  </svg>
+                </div>
+                <div class="bg-white rounded-2xl rounded-bl-md p-3 soft-shadow border border-white/50">
+                  <div class="flex gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 300ms"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 住所決定ボタン + 入力エリア -->
+          <div class="flex-shrink-0 border-t border-amber-100 bg-cream px-4 pt-2 safe-bottom">
+            <button
+              @click="finishAddressChat"
+              class="w-full mb-2 py-2.5 rounded-full bg-sage-muted/10 text-sage-muted text-xs tracking-wide font-medium border border-sage-muted/30 transition-transform active:scale-[0.98]"
+            >
+              住所が決まった！
+            </button>
+            <div class="flex items-end gap-2 pb-1">
+              <div class="flex-1 bg-white rounded-2xl soft-shadow border border-white/50 overflow-hidden">
+                <input
+                  v-model="chatInput"
+                  @keydown.enter="sendChatMessage"
+                  type="text"
+                  placeholder="メッセージを入力..."
+                  class="w-full px-4 py-3 text-sm text-text-main bg-transparent outline-none placeholder:text-text-light/50"
+                  style="font-size: 16px;"
+                  :disabled="isChatLoading"
+                />
+              </div>
+              <button
+                @click="sendChatMessage"
+                :disabled="!chatInput.trim() || isChatLoading"
+                class="flex-shrink-0 w-10 h-10 rounded-full bg-sage-muted text-white flex items-center justify-center soft-shadow transition-opacity"
+                :class="(!chatInput.trim() || isChatLoading) ? 'opacity-40' : 'opacity-100 active:scale-95'"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1614,5 +1615,14 @@ onUnmounted(() => {
 @keyframes deferred-slide-down {
   0% { opacity: 0; max-height: 0; transform: translateY(-10px); }
   100% { opacity: 1; max-height: 500px; transform: translateY(0); }
+
+}
+
+/* ==================== チャット画面のセーフエリア ==================== */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 8px);
 }
 </style>
