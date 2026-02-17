@@ -196,6 +196,48 @@ export async function analyzeStrategic(imageBase64) {
 }
 
 /**
+ * アイテムの住所をAIと会話しながら決める
+ * @param {string} imageBase64 - 部屋の写真（初回のみ使用）
+ * @param {string} itemName - アイテム名
+ * @param {string} category - カテゴリ
+ * @param {Array} messages - 会話履歴 [{role: 'user'|'ai', text: string}]
+ * @returns {Promise<Object>} AIの返答
+ */
+export async function chatAboutAddress(imageBase64, itemName, category, messages = []) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chat-address`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageBase64,
+        itemName,
+        category,
+        messages,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      reply: data.reply,
+    }
+  } catch (error) {
+    console.error('住所相談チャットエラー:', error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
  * 部屋の整理イメージを生成（散らかった物を整理整頓した状態に変換）
  * @param {string} imageBase64 - 撮影した部屋の Base64 画像データ
  * @returns {Promise<Object>} 編集された画像情報

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { generateFutureVision, analyzeCleanupSpots, getUsageStatus, analyzeStrategic } from '../utils/gemini.js'
+import { generateFutureVision, analyzeCleanupSpots, getUsageStatus, analyzeStrategic, chatAboutAddress } from '../utils/gemini.js'
 import { useRoomStore } from '../stores/room.js'
 
 const router = useRouter()
@@ -24,6 +24,123 @@ const cleanupSpots = ref([])
 const totalEstimatedTime = ref('')
 const encouragement = ref('')
 const completedSpots = ref([])
+
+// 後回しボックス（所定の場所が決まっていないアイテム）
+const deferredItems = ref([])
+
+// アイテムを後回しボックスに入れる
+const deferItem = (index) => {
+  const spot = cleanupSpots.value[index]
+  deferredItems.value.push({
+    item: spot.items,
+    category: spot.category,
+    suggestedPlace: null
+  })
+  // 完了扱いにする
+  if (!completedSpots.value.includes(index)) {
+    completedSpots.value.push(index)
+  }
+}
+
+// 後回しボックスの表示状態
+const showDeferredBox = ref(false)
+
+// チャット関連の状態
+const selectedDeferredItem = ref(null) // { item, category, index }
+const chatMessages = ref([]) // [{ role: 'user'|'ai', text }]
+const chatInput = ref('')
+const isChatLoading = ref(false)
+const chatScrollRef = ref(null)
+
+// 後回しボックスからアイテムを削除（住所を決めた）
+const removeDeferredItem = (idx) => {
+  deferredItems.value.splice(idx, 1)
+}
+
+// チャット画面を開く（アイテム選択）
+const openChat = async (item, idx) => {
+  selectedDeferredItem.value = { ...item, index: idx }
+  chatMessages.value = []
+  chatInput.value = ''
+  isChatLoading.value = true
+
+  // AIの初回メッセージを取得
+  const result = await chatAboutAddress(
+    capturedImage.value,
+    item.item,
+    item.category,
+    []
+  )
+
+  if (result.success) {
+    chatMessages.value.push({ role: 'ai', text: result.reply })
+  } else {
+    chatMessages.value.push({ role: 'ai', text: `「${item.item}」の住所を一緒に決めましょう！どんな時に使うことが多いですか？` })
+  }
+  isChatLoading.value = false
+  await nextTick()
+  scrollChatToBottom()
+}
+
+// チャットメッセージ送信
+const sendChatMessage = async () => {
+  const text = chatInput.value.trim()
+  if (!text || isChatLoading.value) return
+
+  chatMessages.value.push({ role: 'user', text })
+  chatInput.value = ''
+  isChatLoading.value = true
+  await nextTick()
+  scrollChatToBottom()
+
+  const result = await chatAboutAddress(
+    capturedImage.value,
+    selectedDeferredItem.value.item,
+    selectedDeferredItem.value.category,
+    chatMessages.value
+  )
+
+  if (result.success) {
+    chatMessages.value.push({ role: 'ai', text: result.reply })
+  } else {
+    chatMessages.value.push({ role: 'ai', text: 'すみません、少しうまく聞き取れませんでした。もう一度教えてもらえますか？' })
+  }
+  isChatLoading.value = false
+  await nextTick()
+  scrollChatToBottom()
+}
+
+// チャットを下にスクロール
+const scrollChatToBottom = () => {
+  if (chatScrollRef.value) {
+    chatScrollRef.value.scrollTop = chatScrollRef.value.scrollHeight
+  }
+}
+
+// 住所が決まった → アイテムを後回しボックスから削除してチャットを閉じる
+const finishAddressChat = () => {
+  if (selectedDeferredItem.value) {
+    const idx = deferredItems.value.findIndex(
+      d => d.item === selectedDeferredItem.value.item && d.category === selectedDeferredItem.value.category
+    )
+    if (idx !== -1) {
+      deferredItems.value.splice(idx, 1)
+    }
+  }
+  selectedDeferredItem.value = null
+  chatMessages.value = []
+}
+
+// チャットを閉じる（住所未決定）
+const closeChatWithoutDecision = () => {
+  selectedDeferredItem.value = null
+  chatMessages.value = []
+}
+
+// 所定の場所に戻すタスクかどうか判定
+const isReturnToPlaceTask = (action) => {
+  return action && action.includes('所定の場所に戻す')
+}
 
 // 高画質モード設定
 const highQualityMode = ref(false)
@@ -952,7 +1069,167 @@ onUnmounted(() => {
                 <p v-if="spot.visualEffect" class="text-[11px] text-sage-muted mt-2 font-light">
                   ✨ {{ spot.visualEffect }}
                 </p>
+
+                <!-- 後回しボックスへボタン（所定の場所に戻すタスクのみ） -->
+                <button
+                  v-if="isReturnToPlaceTask(spot.action) && !completedSpots.includes(index)"
+                  @click.stop="deferItem(index)"
+                  class="mt-3 w-full py-2 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-light tracking-wide flex items-center justify-center gap-2 transition-all hover:bg-amber-100"
+                >
+                  <span class="text-base">📦</span>
+                  <span>住所が決まってない → 後回しボックスへ</span>
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 後回しボックスセクション（タスク完了後に表示） -->
+        <div
+          v-if="deferredItems.length > 0 && completedSpots.length === cleanupSpots.length"
+          class="flex-shrink-0 mx-6 mb-4"
+        >
+          <div class="bg-amber-50 rounded-3xl p-5 border border-amber-200">
+            <!-- ヘッダー（常に表示） -->
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center">
+                <span class="text-xl">📦</span>
+              </div>
+              <div class="flex-1">
+                <h3 class="text-text-main text-sm font-medium">後回しボックス</h3>
+                <p class="text-amber-700 text-xs font-light">{{ deferredItems.length }}個のアイテムの住所が未定</p>
+              </div>
+            </div>
+
+            <!-- 閉じた状態：ボタンのみ表示 -->
+            <button
+              v-if="!showDeferredBox"
+              @click="showDeferredBox = true"
+              class="mt-4 w-full py-3.5 rounded-2xl bg-amber-500 text-white text-sm font-medium tracking-wide soft-shadow transition-transform active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <span class="text-base">💬</span>
+              <span>相談しながら住所を決める！</span>
+            </button>
+
+            <!-- 開いた状態：アイテムリスト -->
+            <div v-if="showDeferredBox" class="mt-4 space-y-2 deferred-expand">
+              <p class="text-amber-700 text-xs font-light mb-3">相談したいアイテムをタップしてください</p>
+              <div
+                v-for="(item, idx) in deferredItems"
+                :key="idx"
+                @click="openChat(item, idx)"
+                class="bg-white rounded-xl p-3.5 border border-amber-100 cursor-pointer transition-all active:scale-[0.98] hover:border-amber-300"
+              >
+                <div class="flex items-center gap-3">
+                  <span class="text-lg">{{ getCategoryIcon(item.category) }}</span>
+                  <span class="text-text-main text-sm flex-1">{{ item.item }}</span>
+                  <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== 住所相談チャット画面 ==================== -->
+        <div
+          v-if="selectedDeferredItem"
+          class="fixed inset-0 bg-cream z-[100] flex flex-col max-w-[480px] mx-auto"
+        >
+          <!-- チャットヘッダー -->
+          <header class="flex items-center bg-cream/80 backdrop-blur-md px-6 py-4 justify-between border-b border-amber-100">
+            <button @click="closeChatWithoutDecision" class="flex size-10 items-center justify-center rounded-full bg-beige-soft soft-shadow">
+              <svg class="w-5 h-5 text-text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div class="flex-1 text-center">
+              <p class="text-text-main text-sm font-medium">住所相談</p>
+              <p class="text-amber-600 text-xs font-light">{{ selectedDeferredItem.item }}</p>
+            </div>
+            <div class="w-10"></div>
+          </header>
+
+          <!-- チャットメッセージエリア -->
+          <div ref="chatScrollRef" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div
+              v-for="(msg, i) in chatMessages"
+              :key="i"
+              class="flex"
+              :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+            >
+              <!-- AI アイコン -->
+              <div v-if="msg.role === 'ai'" class="flex items-end gap-2 max-w-[85%]">
+                <div class="w-8 h-8 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  </svg>
+                </div>
+                <div class="bg-white rounded-2xl rounded-bl-md p-3.5 soft-shadow border border-white/50">
+                  <p class="text-text-main text-sm font-light leading-relaxed whitespace-pre-wrap">{{ msg.text }}</p>
+                </div>
+              </div>
+
+              <!-- ユーザーメッセージ -->
+              <div v-else class="max-w-[80%]">
+                <div class="bg-sage-muted text-white rounded-2xl rounded-br-md p-3.5">
+                  <p class="text-sm font-light leading-relaxed">{{ msg.text }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ローディング表示 -->
+            <div v-if="isChatLoading" class="flex justify-start">
+              <div class="flex items-end gap-2">
+                <div class="w-8 h-8 rounded-full bg-sage-muted flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/>
+                  </svg>
+                </div>
+                <div class="bg-white rounded-2xl rounded-bl-md p-3.5 soft-shadow border border-white/50">
+                  <div class="flex gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 rounded-full bg-text-light/40 animate-bounce" style="animation-delay: 300ms"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 住所決定ボタン + 入力エリア -->
+          <div class="flex-shrink-0 border-t border-amber-100 bg-cream px-4 pb-8 pt-3">
+            <!-- 住所が決まったボタン -->
+            <button
+              @click="finishAddressChat"
+              class="w-full mb-3 py-3 rounded-full bg-sage-muted/10 text-sage-muted text-xs tracking-wide font-medium border border-sage-muted/30 transition-transform active:scale-[0.98]"
+            >
+              住所が決まった！
+            </button>
+
+            <!-- テキスト入力 -->
+            <div class="flex items-end gap-2">
+              <div class="flex-1 bg-white rounded-2xl soft-shadow border border-white/50 overflow-hidden">
+                <input
+                  v-model="chatInput"
+                  @keydown.enter="sendChatMessage"
+                  type="text"
+                  placeholder="メッセージを入力..."
+                  class="w-full px-4 py-3 text-sm text-text-main bg-transparent outline-none placeholder:text-text-light/50"
+                  :disabled="isChatLoading"
+                />
+              </div>
+              <button
+                @click="sendChatMessage"
+                :disabled="!chatInput.trim() || isChatLoading"
+                class="flex-shrink-0 w-10 h-10 rounded-full bg-sage-muted text-white flex items-center justify-center soft-shadow transition-opacity"
+                :class="(!chatInput.trim() || isChatLoading) ? 'opacity-40' : 'opacity-100 active:scale-95'"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -960,11 +1237,18 @@ onUnmounted(() => {
         <!-- 下部ボタン -->
         <div class="flex-shrink-0 p-6 pb-10 bg-gradient-to-t from-cream via-cream to-transparent">
           <button
-            v-if="completedSpots.length === cleanupSpots.length && cleanupSpots.length > 0"
+            v-if="completedSpots.length === cleanupSpots.length && cleanupSpots.length > 0 && deferredItems.length === 0"
             @click="goHome"
             class="w-full py-4 rounded-full bg-sage-muted text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98] uppercase"
           >
             完了！ホームへ戻る
+          </button>
+          <button
+            v-else-if="completedSpots.length === cleanupSpots.length && deferredItems.length > 0"
+            @click="goHome"
+            class="w-full py-4 rounded-full bg-amber-500 text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98]"
+          >
+            後回しボックスは後で整理する
           </button>
           <button
             v-else
@@ -1321,5 +1605,14 @@ onUnmounted(() => {
 /* ==================== Shutter Button ==================== */
 .shutter-outer {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ==================== 後回しボックス展開アニメーション ==================== */
+.deferred-expand {
+  animation: deferred-slide-down 0.3s ease-out forwards;
+}
+@keyframes deferred-slide-down {
+  0% { opacity: 0; max-height: 0; transform: translateY(-10px); }
+  100% { opacity: 1; max-height: 500px; transform: translateY(0); }
 }
 </style>

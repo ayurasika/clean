@@ -1463,8 +1463,28 @@ app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => 
 
 【重要】
 - 各タスクは30秒〜2分で完了でき、視覚的な「秩序感」の向上が著しいものにする
-- 8〜12個のタスクを生成する（少なすぎは禁止）
-- テーブルの上が完全に片付くまでのステップを網羅する
+- 部屋が完全に片付くまで必要なタスクを全て生成する（上限なし）
+- 見えているアイテム全てに対応するタスクを作成する
+- 少なすぎは禁止（最低でも5個以上）
+
+【タスクの細分化ルール - 最重要】
+1つのタスクには1つのアクションだけ。複合的な指示は禁止。
+
+悪い例（禁止）:
+❌「カウンター上の食品や調味料を整理し、使用頻度の低いものは収納する」
+❌「書類を分類して、不要なものは捨てる」
+❌「衣類を畳んで、クローゼットにしまう」
+
+良い例（推奨）:
+✅「カウンター上の食品をキッチンへ持っていく」
+✅「調味料をキッチンの棚に戻す」
+✅「書類を一箇所に集める」
+✅「不要な紙をゴミ箱に捨てる」
+✅「衣類を畳む」
+✅「畳んだ衣類をクローゼットへ持っていく」
+
+各タスクは「〇〇を△△する」という単純な形式にする。
+「整理する」「片付ける」などの曖昧な動詞は使わない。
 
 【カテゴリー別のアクション例】
 ■ 書類・紙類 (documents)
@@ -1528,48 +1548,74 @@ app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => 
 - ユーザーが「あ、これのことだ」とすぐ分かる表現にする
 
 【アクションのルール】
-- 食器、コップ、調味料、食べ物 → 「キッチンへ持っていく」
+- 食器、コップ、調味料 → 「キッチンへ持っていく」
+- お菓子の袋（中身あり）、未開封の食べ物 → 「キッチンへ持っていく」
+- お菓子の袋（空）、食べ終わったゴミ、ティッシュのゴミ、レシート → 「ゴミ箱へ捨てる」
 - 衣類、タオル → 「洗濯カゴへ入れる」または「クローゼットへ持っていく」
 - 本、雑誌 → 「本棚へ戻す」または「重ねて端に寄せる」
 - 書類、紙 → 「重ねて揃える」
+- おもちゃ → 「おもちゃ置き場へ戻す」
+- ペン、文房具 → 「ペン立てに戻す」または「まとめて一箇所に集める」
 - ゴミ → 「ゴミ箱へ捨てる」
-- その他 → 「テーブルの端に揃えて置く」
-※「ラベルを揃える」「向きを変える」などの細かい整頓より、まず「あるべき場所へ移動」を優先する`
+- ポーチ、バッグ、トートバッグ、財布、メガネケースなど個人の持ち物 → 「所定の場所に戻す」（この表現をそのまま使う）
+- おもちゃ、ゲーム、ルービックキューブ、ボールなど → 「所定の場所に戻す」（この表現をそのまま使う）
+- 帽子、衣類小物 → 「所定の場所に戻す」（「クローゼット」など具体的な場所を推測しない）
+- その他すべて → 「所定の場所に戻す」を使う（「棚に置く」などと推測しない）
+※「棚」「クローゼット」など具体的な場所の推測は禁止。ユーザーの家の収納場所は分からないため。
+※「ラベルを揃える」「向きを変える」などの細かい整頓より、まず「あるべき場所へ移動」を優先する
 
-    // マイクロタスク分析
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }]
+【見逃し防止：細かいものも必ず検出】
+ペン、鉛筆、消しゴム、クリップ、輪ゴム、シール、小さなおもちゃ、充電ケーブル、イヤホン、
+コイン、鍵、アクセサリーなど、小さいものも1つ1つ個別にタスク化すること。
+「文房具をまとめる」ではなく「ペンをペン立てに戻す」「消しゴムを筆箱に入れる」のように個別に。`
+
+    // マイクロタスク分析（429エラー時リトライ機能付き）
+    const makeRequest = async (retryCount = 0) => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          contents: [
-            {
-              parts: [
-                { text: analyzePrompt },
-                {
-                  inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: base64Data,
-                  },
-                },
-              ],
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemInstruction }]
             },
-          ],
-          generationConfig: {
-            temperature: 0.3,
-            topP: 0.9,
-            topK: 32,
-            responseMimeType: 'application/json',
-          },
-        }),
+            contents: [
+              {
+                parts: [
+                  { text: analyzePrompt },
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.3,
+              topP: 0.9,
+              topK: 32,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      )
+
+      // 429エラー時は3秒待ってリトライ（最大2回）
+      if (response.status === 429 && retryCount < 2) {
+        console.log(`⏳ レート制限 - ${3 * (retryCount + 1)}秒後にリトライ (${retryCount + 1}/2)`)
+        await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)))
+        return makeRequest(retryCount + 1)
       }
-    )
+
+      return response
+    }
+
+    const response = await makeRequest()
 
     if (!response.ok) {
       const errorData = await response.json()
@@ -1629,6 +1675,119 @@ app.post('/api/analyze-cleanup-spots', requireGeminiApiKey, async (req, res) => 
   } catch (error) {
     console.error('片付け分析サーバーエラー:', error)
     res.status(500).json({ error: error.message })
+  }
+})
+
+// ============================================================
+// アイテムの住所相談チャット（Gemini会話）
+// ============================================================
+app.post('/api/chat-address', requireGeminiApiKey, async (req, res) => {
+  try {
+    const { imageBase64, itemName, category, messages } = req.body
+
+    if (!itemName) {
+      return res.status(400).json({ error: 'itemName は必須です' })
+    }
+
+    // 画像データの準備（初回のみ画像を含める）
+    const base64Data = imageBase64 ? imageBase64.replace(/^data:image\/[a-z]+;base64,/, '') : null
+
+    const systemInstruction = `あなたは「かたづけナビ AI」の片付けアドバイザーです。
+ユーザーが片付け中に「住所（＝定位置）が決まっていないアイテム」の置き場所を一緒に考えます。
+
+## あなたの役割
+- ユーザーの部屋の写真を見て、空間の特徴や既にある収納を把握する
+- アイテムの使用頻度・用途・サイズ感を会話から引き出す
+- 具体的な置き場所を一緒に決める（「棚の2段目」「引き出しの右側」のように具体的に）
+
+## 会話のスタイル
+- フレンドリーで短めに（1-3文程度）
+- 押し付けずに提案する（「〜はどうですか？」）
+- ユーザーの生活習慣に合わせる
+
+## 今回のアイテム
+- 名前: ${itemName}
+- カテゴリ: ${category || '不明'}`
+
+    // 会話履歴を Gemini の contents 形式に変換
+    const contents = []
+
+    // 初回メッセージ（画像付き）
+    if (messages && messages.length > 0) {
+      for (const msg of messages) {
+        const parts = [{ text: msg.text }]
+        // 最初のユーザーメッセージに画像を添付
+        if (msg.role === 'user' && contents.length === 0 && base64Data) {
+          parts.push({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Data,
+            },
+          })
+        }
+        contents.push({
+          role: msg.role === 'ai' ? 'model' : 'user',
+          parts,
+        })
+      }
+    } else {
+      // 初回: 画像を見てアイテムについて会話を始める
+      const parts = [
+        { text: `この部屋の写真を見て、「${itemName}」の住所（定位置）を一緒に決めたいです。まず最初の提案やヒアリングをお願いします。` },
+      ]
+      if (base64Data) {
+        parts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: base64Data,
+          },
+        })
+      }
+      contents.push({ role: 'user', parts })
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.7,
+            topP: 0.9,
+            topK: 40,
+            maxOutputTokens: 300,
+          },
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('チャットAPI エラー:', errorData)
+      return res.status(response.status).json({
+        error: errorData.error?.message || 'Gemini API エラー',
+      })
+    }
+
+    const data = await response.json()
+    let replyText = ''
+    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+      for (const part of data.candidates[0].content.parts) {
+        if (part.text) {
+          replyText += part.text
+        }
+      }
+    }
+
+    res.json({ success: true, reply: replyText })
+  } catch (error) {
+    console.error('チャットサーバーエラー:', error)
+    res.status(500).json({ error: 'チャット処理中にエラーが発生しました' })
   }
 })
 
