@@ -1098,7 +1098,6 @@ onUnmounted(() => {
 
         <!-- 後回しボックスセクション -->
         <div
-          v-if="deferredItems.length > 0"
           id="deferred-box"
           class="flex-shrink-0 mx-6 mb-4"
         >
@@ -1110,13 +1109,14 @@ onUnmounted(() => {
               </div>
               <div class="flex-1">
                 <h3 class="text-text-main text-sm font-medium">後回しボックス</h3>
-                <p class="text-amber-700 text-xs font-light">{{ deferredItems.length }}個のアイテムの住所が未定</p>
+                <p class="text-amber-700 text-xs font-light" v-if="deferredItems.length > 0">{{ deferredItems.length }}個のアイテムの住所が未定</p>
+                <p class="text-text-light text-xs font-light" v-else>後回しにしたいタスクの📦を押してね</p>
               </div>
             </div>
 
             <!-- 閉じた状態：ボタンのみ表示 -->
             <button
-              v-if="!showDeferredBox"
+              v-if="deferredItems.length > 0 && !showDeferredBox"
               @click="showDeferredBox = true"
               class="mt-4 w-full py-3.5 rounded-2xl bg-amber-500 text-white text-sm font-medium tracking-wide soft-shadow transition-transform active:scale-[0.98] flex items-center justify-center gap-2"
             >
@@ -1125,7 +1125,7 @@ onUnmounted(() => {
             </button>
 
             <!-- 開いた状態：アイテムリスト -->
-            <div v-if="showDeferredBox" class="mt-4 space-y-2 deferred-expand">
+            <div v-if="deferredItems.length > 0 && showDeferredBox" class="mt-4 space-y-2 deferred-expand">
               <p class="text-amber-700 text-xs font-light mb-3">相談したいアイテムをタップしてください</p>
               <div
                 v-for="(item, idx) in deferredItems"
@@ -1165,6 +1165,11 @@ onUnmounted(() => {
             >
               後回しボックスを開く
             </button>
+            <div v-else class="flex gap-3">
+              <span class="flex-1 text-center text-text-light text-xs font-light py-3">
+                {{ completedSpots.length }} / {{ cleanupSpots.length }} 完了
+              </span>
+            </div>
           </div>
 
           <!-- ナビバー -->
