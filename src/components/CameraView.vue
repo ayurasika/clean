@@ -151,8 +151,8 @@ const isReturnToPlaceTask = (action) => {
   return action && action.includes('所定の場所に戻す')
 }
 
-// 高画質モード設定
-const highQualityMode = ref(false)
+// 高画質モード（常にON）
+const highQualityMode = ref(true)
 const usageStatus = ref({ flash: { used: 0, limit: 50 }, pro: { used: 0, limit: 10 } })
 
 // Before/After比較スライダー
@@ -577,19 +577,11 @@ onUnmounted(() => {
             </svg>
           </button>
 
-          <!-- 高画質モード表示 -->
-          <button
-            @click="highQualityMode = !highQualityMode"
-            class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 border border-white/10"
-          >
-            <div
-              class="size-2 rounded-full"
-              :class="highQualityMode ? 'bg-green-400 animate-pulse' : 'bg-white/40'"
-            ></div>
-            <span class="text-white text-sm font-medium leading-tight tracking-wide">
-              {{ highQualityMode ? '高画質モード' : '通常モード' }}
-            </span>
-          </button>
+          <!-- 高画質モード表示（固定） -->
+          <div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 border border-white/10">
+            <div class="size-2 rounded-full bg-green-400 animate-pulse"></div>
+            <span class="text-white text-sm font-medium leading-tight tracking-wide">高画質モード</span>
+          </div>
 
           <div class="flex size-10 shrink-0 items-center justify-center rounded-full glass-panel">
             <svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -627,17 +619,10 @@ onUnmounted(() => {
             <div class="flex-1 flex justify-center">
               <button
                 @click="capturePhoto"
-                class="relative flex items-center justify-center rounded-full size-20 p-1 group"
-                :class="highQualityMode ? 'bg-primary/30 border-2 border-primary/50' : 'bg-white/20 border-2 border-white/30'"
+                class="relative flex items-center justify-center rounded-full size-20 p-1 group bg-primary/30 border-2 border-primary/50"
               >
-                <div
-                  class="size-full rounded-full soft-glow flex items-center justify-center shutter-outer"
-                  :class="highQualityMode ? 'bg-primary' : 'bg-white'"
-                >
-                  <div
-                    class="size-14 rounded-full border"
-                    :class="highQualityMode ? 'border-primary-light' : 'border-slate-200'"
-                  ></div>
+                <div class="size-full rounded-full soft-glow flex items-center justify-center shutter-outer bg-primary">
+                  <div class="size-14 rounded-full border border-primary-light"></div>
                 </div>
               </button>
             </div>
@@ -652,7 +637,7 @@ onUnmounted(() => {
             部屋全体が映るように撮影してください
           </p>
           <p class="text-center text-white/30 text-[10px] mt-1 tracking-wide">
-            {{ highQualityMode ? 'Pro モデル（残り ' + (usageStatus.pro.limit - usageStatus.pro.used) + ' 回）' : 'Flash モデル（残り ' + (usageStatus.flash.limit - usageStatus.flash.used) + ' 回）' }}
+            Pro モデル（残り {{ usageStatus.pro.limit - usageStatus.pro.used }} 回）
           </p>
         </div>
 
