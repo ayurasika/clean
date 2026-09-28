@@ -2,28 +2,33 @@
  * Gemini API 共通ヘルパー（Vercel Serverless Functions用）
  */
 
-export function getGeminiApiKey() {
-  return process.env.VITE_GEMINI_API_KEY
-}
+import { setCorsHeaders as setCors, isOriginAcceptable, isBodyTooLarge } from './security.js'
 
 /**
- * CORS ヘッダーを設定
+ * APIキーはサーバー側だけで使う名前（GEMINI_API_KEY）を優先。
+ * 以前の VITE_GEMINI_API_KEY も互換のため読むが、VITE_ で始まる名前は
+ * フロントのコードから参照されると公開ファイルに埋め込まれてしまうので、移行を推奨。
  */
-export function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+export function getGeminiApiKey() {
+  return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY
 }
 
 /**
- * OPTIONSプリフライト / メソッドチェック / APIキーチェックの共通処理
+ * CORS ヘッダーを設定（自サイトのオリジンだけ許可）
+ */
+export function setCorsHeaders(req, res) {
+  setCors(req, res)
+}
+
+/**
+ * OPTIONSプリフライト / メソッドチェック / 呼び出し元チェック / サイズチェック / APIキーチェックの共通処理
  * @returns {boolean} true なら呼び出し元は即 return すべき
  */
 export function handlePreflightAndValidation(req, res, allowedMethods = ['POST']) {
-  setCorsHeaders(res)
+  setCors(req, res)
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end()
+    res.status(204).end()
     return true
   }
 
@@ -32,8 +37,23 @@ export function handlePreflightAndValidation(req, res, allowedMethods = ['POST']
     return true
   }
 
+  if (!isOriginAcceptable(req)) {
+    res.status(403).json({ error: 'このサイトからの利用は許可されていません。' })
+    return true
+  }
+
+  if (isBodyTooLarge(req)) {
+    res.status(413).json({ error: '送信データが大きすぎます。もう少し小さい画像でお試しください。' })
+    return true
+  }
+
+  if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+    res.status(400).json({ error: 'リクエストの形式が正しくありません。' })
+    return true
+  }
+
   if (!getGeminiApiKey()) {
-    res.status(503).json({ error: 'Gemini APIキーが設定されていません', code: 'MISSING_API_KEY' })
+    res.status(503).json({ error: 'ただいまサービスを準備中です。', code: 'MISSING_API_KEY' })
     return true
   }
 
@@ -46,10 +66,11 @@ export function handlePreflightAndValidation(req, res, allowedMethods = ['POST']
 export async function callGemini(model, body) {
   const apiKey = getGeminiApiKey()
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // キーは URL ではなくヘッダーで渡す（URL がエラーやログに残っても漏れないように）
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
     }
   )

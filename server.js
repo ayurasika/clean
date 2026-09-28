@@ -24,7 +24,7 @@ dotenv.config()
 // ============================================================
 // 環境変数・APIキーの検証（Gemini統一版）
 // ============================================================
-const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY
 
 const validateApiKeys = () => {
   if (!GEMINI_API_KEY) {
@@ -45,7 +45,7 @@ const validateApiKeys = () => {
   }
 
   console.log('✅ APIキー検証OK')
-  console.log(`   - Gemini API: ${GEMINI_API_KEY.slice(0, 10)}...`)
+  console.log('   - Gemini API: 設定済み')
   return true
 }
 

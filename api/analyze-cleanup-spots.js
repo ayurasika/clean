@@ -1,16 +1,21 @@
 import { handlePreflightAndValidation, callGemini } from './_lib/gemini.js'
+import { validateImage, getClientIp, friendlyUpstreamError, GENERIC_SERVER_ERROR, logError } from './_lib/security.js'
+import { tryConsume, LIMIT_MESSAGES } from './_lib/ratelimit.js'
 
 export default async function handler(req, res) {
   if (handlePreflightAndValidation(req, res)) return
 
   try {
-    const { imageBase64 } = req.body
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: '画像データが必要です' })
+    const image = validateImage(req.body.imageBase64)
+    if (!image.ok) {
+      return res.status(image.status).json({ error: image.error })
     }
+    const base64Data = image.data
 
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    const limit = await tryConsume({ tier: 'text', ip: getClientIp(req), ipBucket: 'text' })
+    if (!limit.ok) {
+      return res.status(429).json({ error: LIMIT_MESSAGES[limit.reason], code: 'DAILY_LIMIT' })
+    }
 
     const systemInstruction = `You are the world's best professional cleaning advisor and room organization expert.
 あなたは世界最高のプロ清掃アドバイザーであり、部屋整理の専門家です。
@@ -166,7 +171,7 @@ export default async function handler(req, res) {
               { text: analyzePrompt },
               {
                 inlineData: {
-                  mimeType: 'image/jpeg',
+                  mimeType: image.mimeType,
                   data: base64Data,
                 },
               },
@@ -182,7 +187,7 @@ export default async function handler(req, res) {
       })
 
       if (response.status === 429 && retryCount < 2) {
-        console.log(`⏳ レート制限 - ${3 * (retryCount + 1)}秒後にリトライ (${retryCount + 1}/2)`)
+        console.log(`レート制限 - ${3 * (retryCount + 1)}秒後にリトライ (${retryCount + 1}/2)`)
         await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)))
         return makeRequest(retryCount + 1)
       }
@@ -193,10 +198,9 @@ export default async function handler(req, res) {
     const response = await makeRequest()
 
     if (!response.ok) {
-      const errorData = await response.json()
-      return res.status(response.status).json({
-        error: errorData.error?.message || 'Gemini API エラー',
-      })
+      console.error(`片付け分析 Gemini API エラー: HTTP ${response.status}`)
+      const f = friendlyUpstreamError(response.status)
+      return res.status(f.status).json({ error: f.error })
     }
 
     const data = await response.json()
@@ -217,24 +221,44 @@ export default async function handler(req, res) {
     } catch (parseError) {
       const jsonMatch = analysisText.match(/\{[\s\S]*"spots"[\s\S]*\}/)
       if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0])
+        try {
+          analysisResult = JSON.parse(jsonMatch[0])
+        } catch {
+          analysisResult = null
+        }
       }
     }
 
     if (!analysisResult) {
       return res.json({
         success: true,
-        rawText: analysisText,
+        rawText: analysisText.slice(0, 2000),
         spots: [],
       })
     }
 
+    // AIの出力はそのまま全部返さず、画面で使う項目だけに絞る（文字列以外や長すぎる値は捨てる）
+    const str = (v, max = 300) => (typeof v === 'string' ? v.slice(0, max) : '')
+    const spots = Array.isArray(analysisResult.spots)
+      ? analysisResult.spots.slice(0, 60).map(s => ({
+          category: str(s?.category, 30),
+          location: str(s?.location, 100),
+          items: str(s?.items, 200),
+          action: str(s?.action, 300),
+          principle: str(s?.principle, 100),
+          visualEffect: str(s?.visualEffect, 300),
+          estimatedTime: str(s?.estimatedTime, 30),
+        }))
+      : []
+
     res.json({
       success: true,
-      ...analysisResult,
+      spots,
+      totalEstimatedTime: str(analysisResult.totalEstimatedTime, 50),
+      encouragement: str(analysisResult.encouragement, 500),
     })
   } catch (error) {
-    console.error('片付け分析サーバーエラー:', error)
-    res.status(500).json({ error: error.message })
+    logError('片付け分析サーバーエラー', error)
+    res.status(500).json({ error: GENERIC_SERVER_ERROR })
   }
 }

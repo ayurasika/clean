@@ -3,6 +3,7 @@ import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { generateFutureVision, analyzeCleanupSpots, getUsageStatus, analyzeStrategic, chatAboutAddress } from '../utils/gemini.js'
 import { useRoomStore } from '../stores/room.js'
+import { drawToJpegDataUrl, fileToResizedDataUrl, MAX_FILE_BYTES } from '../utils/image.js'
 
 const router = useRouter()
 const roomStore = useRoomStore()
@@ -74,6 +75,8 @@ const openChat = async (item, idx) => {
 
   if (result.success) {
     chatMessages.value.push({ role: 'ai', text: result.reply })
+  } else if (result.status === 429) {
+    chatMessages.value.push({ role: 'ai', text: result.error })
   } else {
     chatMessages.value.push({ role: 'ai', text: `「${item.item}」の住所を一緒に決めましょう！どんな時に使うことが多いですか？` })
   }
@@ -86,6 +89,16 @@ const openChat = async (item, idx) => {
 const sendChatMessage = async () => {
   const text = chatInput.value.trim()
   if (!text || isChatLoading.value) return
+  if (text.length > CHAT_MAX_CHARS) {
+    alert(`メッセージは${CHAT_MAX_CHARS}文字以内にしてください。`)
+    return
+  }
+  if (chatMessages.value.length + 1 > CHAT_MAX_MESSAGES) {
+    chatMessages.value.push({ role: 'ai', text: 'この相談は長くなってきたので、いったん閉じて、もう一度始めてくださいね。' })
+    await nextTick()
+    scrollChatToBottom()
+    return
+  }
 
   chatMessages.value.push({ role: 'user', text })
   chatInput.value = ''
@@ -102,6 +115,8 @@ const sendChatMessage = async () => {
 
   if (result.success) {
     chatMessages.value.push({ role: 'ai', text: result.reply })
+  } else if (result.status === 429 || result.status === 400) {
+    chatMessages.value.push({ role: 'ai', text: result.error })
   } else {
     chatMessages.value.push({ role: 'ai', text: 'すみません、少しうまく聞き取れませんでした。もう一度教えてもらえますか？' })
   }
@@ -154,6 +169,12 @@ const isReturnToPlaceTask = (action) => {
 // 高画質モード（常にON）
 const highQualityMode = ref(true)
 const usageStatus = ref({ flash: { used: 0, limit: 50 }, pro: { used: 0, limit: 10 } })
+// この端末（IP）の今日の残り回数
+const myUsage = ref(null)
+
+// チャットの制限（サーバー側と同じ値）
+const CHAT_MAX_CHARS = 500
+const CHAT_MAX_MESSAGES = 20
 
 // Before/After比較スライダー
 const sliderPosition = ref(50) // 0-100（50が中央）
@@ -222,7 +243,8 @@ const capturePhoto = () => {
   canvas.height = video.videoHeight
   context.drawImage(video, 0, 0)
 
-  capturedImage.value = canvas.toDataURL('image/jpeg')
+  // 送信前に縮小（通信量・費用の節約）
+  capturedImage.value = drawToJpegDataUrl(canvas, canvas.width, canvas.height)
   stopCamera()
 
   // STEP 1: 未来予想図を生成
@@ -247,21 +269,24 @@ const handleFileSelect = (event) => {
     return
   }
 
-  // FileReaderでBase64に変換
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    capturedImage.value = e.target.result
-    stopCamera()
-
-    console.log('ファイルから画像を読み込みました:', file.name)
-
-    // STEP 1: 未来予想図を生成（カメラ撮影と同じ処理）
-    generateFutureImage()
+  if (file.size > MAX_FILE_BYTES) {
+    alert('画像のサイズが大きすぎます。25MB以下の画像を選んでください。')
+    event.target.value = ''
+    return
   }
-  reader.onerror = () => {
-    alert('ファイルの読み込みに失敗しました')
-  }
-  reader.readAsDataURL(file)
+
+  // 縮小した JPEG に作り直す（位置情報などの撮影データも取り除かれる）
+  fileToResizedDataUrl(file)
+    .then((dataUrl) => {
+      capturedImage.value = dataUrl
+      stopCamera()
+
+      // STEP 1: 未来予想図を生成（カメラ撮影と同じ処理）
+      generateFutureImage()
+    })
+    .catch(() => {
+      alert('この画像は読み込めませんでした。JPEG・PNG の写真でお試しください。')
+    })
 
   // input をリセット（同じファイルを再選択できるように）
   event.target.value = ''
@@ -280,6 +305,7 @@ const fetchUsageStatus = async () => {
   const result = await getUsageStatus()
   if (result.success) {
     usageStatus.value = result.usage
+    myUsage.value = result.you || null
   }
 }
 
@@ -301,9 +327,11 @@ const generateFutureImage = async () => {
         usageStatus.value = result.usage
       }
       console.log('未来予想図を生成しました（モデル:', result.model, '）')
+      fetchUsageStatus()
     } else {
       console.error('未来予想図の生成に失敗:', result.error)
-      alert('未来予想図の生成に失敗しました。再度お試しください。')
+      alert(result.error || '未来予想図の生成に失敗しました。再度お試しください。')
+      fetchUsageStatus()
       resetToCamera()
     }
   } catch (error) {
@@ -333,9 +361,11 @@ const regenerateFutureImage = async () => {
         usageStatus.value = result.usage
       }
       console.log('未来予想図を再生成しました（モデル:', result.model, '）')
+      fetchUsageStatus()
     } else {
       console.error('再生成に失敗:', result.error)
-      alert('再生成に失敗しました。もう一度お試しください。')
+      alert(result.error || '再生成に失敗しました。もう一度お試しください。')
+      fetchUsageStatus()
       currentPhase.value = 'vision'
     }
   } catch (error) {
@@ -363,6 +393,12 @@ const analyzeSpots = async () => {
       console.log('片付け場所分析完了:', result.spots)
     } else {
       console.error('片付け場所の分析に失敗:', result.error || 'spots が空です')
+      if (result.status === 429) {
+        // 回数制限に達したときは別の分析に回さず、そのまま伝える
+        alert(result.error)
+        currentPhase.value = 'vision'
+        return
+      }
       // フォールバック: 従来の戦略的分析へ
       startStrategicAnalysis()
     }
@@ -474,7 +510,7 @@ const startStrategicAnalysis = async () => {
       }, 2000)
     } else {
       console.error('戦略的分析エラー:', result.error)
-      alert('分析に失敗しました: ' + result.error)
+      alert(result.error || '分析に失敗しました。もう一度お試しください。')
       currentPhase.value = 'spots_result'
     }
   } catch (error) {
@@ -637,7 +673,10 @@ onUnmounted(() => {
             部屋全体が映るように撮影してください
           </p>
           <p class="text-center text-white/30 text-[10px] mt-1 tracking-wide">
-            Pro モデル（残り {{ usageStatus.pro.limit - usageStatus.pro.used }} 回）
+            <template v-if="myUsage && myUsage.image">今日あと {{ Math.max(0, myUsage.image.limit - myUsage.image.used) }} 回 ・ </template>Pro モデル（残り {{ Math.max(0, usageStatus.pro.limit - usageStatus.pro.used) }} 回）
+          </p>
+          <p class="text-center text-white/40 text-[10px] mt-3 leading-relaxed tracking-wide">
+            写真は分析のため Google Gemini（AI）に送信されます。<br />このアプリでは写真を保存しません。
           </p>
         </div>
 
@@ -1276,6 +1315,7 @@ onUnmounted(() => {
                   v-model="chatInput"
                   @keydown.enter="sendChatMessage"
                   type="text"
+                  :maxlength="CHAT_MAX_CHARS"
                   placeholder="メッセージを入力..."
                   class="w-full px-4 py-3 text-sm text-text-main bg-transparent outline-none placeholder:text-text-light/50"
                   style="font-size: 16px;"

@@ -8,6 +8,48 @@
 // ngrok経由でも動作するように空文字列（相対パス）をデフォルトに
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
+const NETWORK_ERROR_MESSAGE = '通信できませんでした。電波の良いところで、もう一度お試しください。'
+
+/**
+ * サーバーのエラー応答から、利用者に見せる日本語メッセージを取り出す
+ * （サーバーは内部情報を含まないやさしい文だけを返す）
+ */
+async function readErrorMessage(response) {
+  let data = null
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
+  if (data && typeof data.error === 'string' && data.error) return data.error
+  if (response.status === 413) return '画像のサイズが大きすぎます。もう少し小さい画像でお試しください。'
+  if (response.status === 429) return '今日の利用回数の上限に達しました。明日また使ってください。'
+  if (response.status >= 500) return 'AIが混雑しています。しばらく待ってから、もう一度お試しください。'
+  return 'エラーが起きました。もう一度お試しください。'
+}
+
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message)
+    this.status = status
+    this.isApiError = true
+  }
+}
+
+async function throwIfNotOk(response) {
+  if (!response.ok) {
+    throw new ApiError(await readErrorMessage(response), response.status)
+  }
+}
+
+function toFailure(error) {
+  return {
+    success: false,
+    error: error?.isApiError ? error.message : NETWORK_ERROR_MESSAGE,
+    status: error?.status,
+  }
+}
+
 /**
  * 撮影した部屋の写真を元に、片付いた後の未来予想図を生成する
  * Gemini の Image-to-Image 機能で元の部屋の構造を95%以上維持
@@ -30,10 +72,7 @@ export async function generateFutureVision(imageBase64, isRegenerate = false, hi
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -45,10 +84,7 @@ export async function generateFutureVision(imageBase64, isRegenerate = false, hi
     }
   } catch (error) {
     console.error('Gemini 画像編集エラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }
 
@@ -66,6 +102,7 @@ export async function getUsageStatus() {
     return {
       success: true,
       usage: data.usage,
+      you: data.you,
     }
   } catch (error) {
     console.error('使用状況取得エラー:', error)
@@ -98,10 +135,7 @@ export async function inpaintCleanRoom(imageBase64, maskBase64 = null) {
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -111,10 +145,7 @@ export async function inpaintCleanRoom(imageBase64, maskBase64 = null) {
     }
   } catch (error) {
     console.error('Gemini Inpainting エラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }
 
@@ -135,10 +166,7 @@ export async function analyzeCleanupSpots(imageBase64) {
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -150,10 +178,7 @@ export async function analyzeCleanupSpots(imageBase64) {
     }
   } catch (error) {
     console.error('片付け分析エラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }
 
@@ -175,10 +200,7 @@ export async function analyzeStrategic(imageBase64) {
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -188,10 +210,7 @@ export async function analyzeStrategic(imageBase64) {
     }
   } catch (error) {
     console.error('戦略的分析エラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }
 
@@ -218,10 +237,7 @@ export async function chatAboutAddress(imageBase64, itemName, category, messages
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -230,10 +246,7 @@ export async function chatAboutAddress(imageBase64, itemName, category, messages
     }
   } catch (error) {
     console.error('住所相談チャットエラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }
 
@@ -255,10 +268,7 @@ export async function generateOrganizedRoom(imageBase64) {
       }),
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `APIエラー: ${response.statusText}`)
-    }
+    await throwIfNotOk(response)
 
     const data = await response.json()
     return {
@@ -268,9 +278,6 @@ export async function generateOrganizedRoom(imageBase64) {
     }
   } catch (error) {
     console.error('Gemini 整理イメージ生成エラー:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
+    return toFailure(error)
   }
 }

@@ -3,7 +3,7 @@
  */
 import { callGemini } from './gemini.js'
 
-export async function inspectGeneratedImage(originalBase64, generatedBase64, roomType, apiKey) {
+export async function inspectGeneratedImage(originalBase64, generatedBase64, roomType, originalMime = 'image/jpeg') {
   const inspectionPrompt = `You are a STRICT quality control inspector for AI-generated cleaned room images.
 
 Compare these TWO images:
@@ -108,13 +108,13 @@ IMPORTANT: Be a strict inspector. It is better to FAIL a mediocre result than to
             { text: inspectionPrompt },
             {
               inlineData: {
-                mimeType: 'image/jpeg',
+                mimeType: originalMime,
                 data: originalBase64,
               },
             },
             {
               inlineData: {
-                mimeType: 'image/jpeg',
+                mimeType: 'image/png',
                 data: generatedBase64,
               },
             },

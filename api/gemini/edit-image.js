@@ -1,19 +1,43 @@
 import { handlePreflightAndValidation, callGemini, extractImage } from '../_lib/gemini.js'
 import { createAnalysisPrompt, createEditPrompt } from '../_lib/prompts.js'
 import { inspectGeneratedImage } from '../_lib/inspect.js'
+import { validateImage, getClientIp, friendlyUpstreamError, GENERIC_SERVER_ERROR, logError } from '../_lib/security.js'
+import { tryConsume, tryConsumeIp, refundIp, refundGlobal, getUsage, LIMIT_MESSAGES } from '../_lib/ratelimit.js'
+
+// クライアントから受け付ける editType（それ以外は future_vision 扱い）
+const ALLOWED_EDIT_TYPES = ['future_vision', 'future_vision_stronger', 'organize']
 
 export default async function handler(req, res) {
   if (handlePreflightAndValidation(req, res)) return
 
   try {
-    const { imageBase64, editType, highQuality } = req.body
+    const { highQuality } = req.body
+    const editType = ALLOWED_EDIT_TYPES.includes(req.body.editType) ? req.body.editType : 'future_vision'
 
-    if (!imageBase64) {
-      return res.status(400).json({ error: '画像データが必要です' })
+    const image = validateImage(req.body.imageBase64)
+    if (!image.ok) {
+      return res.status(image.status).json({ error: image.error })
     }
+    const base64Data = image.data
+    const imageMime = image.mimeType
 
-    const useProModel = highQuality === true
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    // ============================================================
+    // 利用回数の制限（1人あたり → 全体。Pro が上限なら Flash に切り替え）
+    // ============================================================
+    const ip = getClientIp(req)
+    if (!(await tryConsumeIp(ip, 'image'))) {
+      return res.status(429).json({ error: LIMIT_MESSAGES.ip, code: 'DAILY_LIMIT' })
+    }
+    let modelTier = null
+    if (highQuality === true && (await tryConsume({ tier: 'pro' })).ok) {
+      modelTier = 'pro'
+    } else if ((await tryConsume({ tier: 'flash' })).ok) {
+      modelTier = 'flash'
+    } else {
+      await refundIp(ip, 'image')
+      return res.status(429).json({ error: LIMIT_MESSAGES.global, code: 'DAILY_LIMIT' })
+    }
+    const useProModel = modelTier === 'pro'
 
     // ============================================================
     // JSONモードによる現状分析
@@ -26,6 +50,9 @@ export default async function handler(req, res) {
     let criticalAppliances = []
 
     try {
+      if (!(await tryConsume({ tier: 'text' })).ok) {
+        throw new Error('text tier daily limit reached - skip analysis')
+      }
       const analysisPrompt = createAnalysisPrompt()
 
       const analysisResponse = await callGemini('gemini-2.0-flash', {
@@ -33,7 +60,7 @@ export default async function handler(req, res) {
           {
             parts: [
               { text: analysisPrompt },
-              { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+              { inlineData: { mimeType: imageMime, data: base64Data } },
             ],
           },
         ],
@@ -175,7 +202,7 @@ ${editPrompt}`
           {
             parts: [
               { text: editPrompt },
-              { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+              { inlineData: { mimeType: imageMime, data: base64Data } },
             ],
           },
         ],
@@ -201,14 +228,14 @@ ${editPrompt}`
         if (response.ok || response.status !== 503) break
       }
 
-      if (response.status === 503 && useProModel) {
+      if (response.status === 503 && useProModel && (await tryConsume({ tier: 'flash' })).ok) {
         console.log('🔄 Flashにフォールバック')
         const fallbackResponse = await callGemini('gemini-2.5-flash-image', {
           contents: [
             {
               parts: [
                 { text: createEditPrompt(editType, removeList, roomType, protectedBoundaries, criticalAppliances) },
-                { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+                { inlineData: { mimeType: imageMime, data: base64Data } },
               ],
             },
           ],
@@ -222,38 +249,28 @@ ${editPrompt}`
           response = fallbackResponse
           usedFallbackModel = true
           actualModelUsed = 'gemini-2.5-flash-image'
+          await refundGlobal('pro') // Pro は使われなかった
+        } else {
+          await refundGlobal('flash')
         }
       }
     }
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-
-      if (response.status === 429) {
-        return res.status(429).json({
-          error: 'APIのレート制限に達しました。少し時間をおいてから再度お試しください。',
-          retryAfter: 30
-        })
-      }
-      if (response.status === 503) {
-        return res.status(503).json({
-          error: 'AIモデルが現在混雑しています。しばらく待ってから再度お試しください。',
-          retryAfter: 10
-        })
-      }
-      return res.status(response.status).json({
-        error: errorData.error?.message || 'Gemini API エラー',
-      })
+      console.error(`画像生成 Gemini API エラー: HTTP ${response.status}`)
+      // 生成できなかったので、今回の分は数えない
+      await refundIp(ip, 'image')
+      await refundGlobal(modelTier)
+      const f = friendlyUpstreamError(response.status)
+      return res.status(f.status).json({ error: f.error, retryAfter: f.status === 429 ? 30 : 10 })
     }
 
     const data = await response.json()
     let generatedImageBase64 = extractImage(data)
 
     if (!generatedImageBase64) {
-      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text
-      return res.status(500).json({
-        error: '画像の生成に失敗しました。AIがテキストのみを返しました。',
-        aiResponse: textResponse?.substring(0, 200)
+      return res.status(502).json({
+        error: '画像の生成に失敗しました。別の写真で、もう一度お試しください。',
       })
     }
 
@@ -262,9 +279,21 @@ ${editPrompt}`
     let didRetry = false
     let finalImageBase64 = generatedImageBase64
 
-    inspectionResult = await inspectGeneratedImage(base64Data, generatedImageBase64, roomType)
+    if ((await tryConsume({ tier: 'inspection' })).ok) {
+      inspectionResult = await inspectGeneratedImage(base64Data, generatedImageBase64, roomType, imageMime)
+    }
 
-    if (inspectionResult?.verdict === 'FAIL') {
+    const retryModelTier = modelTier // generateImage() は最初に選んだモデルで作り直す
+    let canRetry = false
+    if (inspectionResult?.verdict === 'FAIL' && (await tryConsume({ tier: 'retry' })).ok) {
+      if ((await tryConsume({ tier: retryModelTier })).ok) {
+        canRetry = true
+      } else {
+        await refundGlobal('retry')
+      }
+    }
+
+    if (canRetry) {
       console.log('🔄 検品FAIL - リトライ開始')
       const retryResponse = await generateImage(inspectionResult.fix_instruction, 2, true)
 
@@ -273,8 +302,10 @@ ${editPrompt}`
         const retryImageBase64 = extractImage(retryData)
 
         if (retryImageBase64) {
-          const retryInspection = await inspectGeneratedImage(base64Data, retryImageBase64, roomType)
-          if (retryInspection) inspectionResult = retryInspection
+          if ((await tryConsume({ tier: 'inspection' })).ok) {
+            const retryInspection = await inspectGeneratedImage(base64Data, retryImageBase64, roomType, imageMime)
+            if (retryInspection) inspectionResult = retryInspection
+          }
           finalImageBase64 = retryImageBase64
           didRetry = true
         }
@@ -288,23 +319,20 @@ ${editPrompt}`
       model: actualModelUsed,
       usedFallback: usedFallbackModel,
       fallbackReason: usedFallbackModel ? 'Gemini 3 Proが混雑していたため、2.5 Flashで生成しました' : null,
-      usage: {
-        flash: { used: 0, limit: 50 },
-        pro: { used: 0, limit: 10 },
-      },
+      usage: (await getUsage(ip)).usage,
       debug: {
         roomType,
         removeItemCount: removeList.length,
         protectedBoundariesCount: protectedBoundaries.length,
         criticalAppliancesCount: criticalAppliances.length,
-        inspectionResult: inspectionResult || { message: '検品未実施' },
+        inspectionVerdict: inspectionResult?.verdict || 'NOT_RUN',
         didRetry,
         usedFallbackModel,
         actualModelUsed,
       }
     })
   } catch (error) {
-    console.error('Gemini サーバーエラー:', error)
-    res.status(500).json({ error: error.message })
+    logError('画像生成サーバーエラー', error)
+    res.status(500).json({ error: GENERIC_SERVER_ERROR })
   }
 }

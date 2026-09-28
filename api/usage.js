@@ -1,16 +1,17 @@
 import { setCorsHeaders } from './_lib/gemini.js'
+import { getClientIp, logError } from './_lib/security.js'
+import { getUsage } from './_lib/ratelimit.js'
 
-export default function handler(req, res) {
-  setCorsHeaders(res)
-  if (req.method === 'OPTIONS') return res.status(200).end()
-  // サーバーレスでは永続カウンタがないため、ダミー応答
-  res.json({
-    success: true,
-    usage: {
-      flash: { used: 0, limit: 50 },
-      pro: { used: 0, limit: 10 },
-      inspection: { used: 0, limit: 100 },
-      retry: { used: 0, limit: 50 },
-    },
-  })
+export default async function handler(req, res) {
+  setCorsHeaders(req, res)
+  if (req.method === 'OPTIONS') return res.status(204).end()
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  try {
+    const { usage, you } = await getUsage(getClientIp(req))
+    res.json({ success: true, usage, you })
+  } catch (error) {
+    logError('使用状況取得エラー', error)
+    res.status(500).json({ success: false, error: '使用状況を取得できませんでした' })
+  }
 }

@@ -1,16 +1,21 @@
 import { handlePreflightAndValidation, callGemini, extractText } from './_lib/gemini.js'
+import { validateImage, getClientIp, friendlyUpstreamError, GENERIC_SERVER_ERROR, logError } from './_lib/security.js'
+import { tryConsume, LIMIT_MESSAGES } from './_lib/ratelimit.js'
 
 export default async function handler(req, res) {
   if (handlePreflightAndValidation(req, res)) return
 
   try {
-    const { imageBase64 } = req.body
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: '画像データが必要です' })
+    const image = validateImage(req.body.imageBase64)
+    if (!image.ok) {
+      return res.status(image.status).json({ error: image.error })
     }
+    const base64Data = image.data
 
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    const limit = await tryConsume({ tier: 'text', ip: getClientIp(req), ipBucket: 'text' })
+    if (!limit.ok) {
+      return res.status(429).json({ error: LIMIT_MESSAGES[limit.reason], code: 'DAILY_LIMIT' })
+    }
 
     const prompt = `あなたは「片付けの司令塔AI」です。この部屋の写真を戦略的に分析してください。
 
@@ -57,7 +62,7 @@ export default async function handler(req, res) {
       contents: [
         {
           parts: [
-            { inline_data: { mime_type: 'image/jpeg', data: base64Data } },
+            { inline_data: { mime_type: image.mimeType, data: base64Data } },
             { text: prompt },
           ],
         },
@@ -69,10 +74,9 @@ export default async function handler(req, res) {
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      return res.status(response.status).json({
-        error: errorData.error?.message || 'Gemini API エラー',
-      })
+      console.error(`分析 Gemini API エラー: HTTP ${response.status}`)
+      const f = friendlyUpstreamError(response.status)
+      return res.status(f.status).json({ error: f.error })
     }
 
     const data = await response.json()
@@ -81,10 +85,9 @@ export default async function handler(req, res) {
     res.json({
       success: true,
       analysis: analysisText,
-      rawResponse: data,
     })
   } catch (error) {
-    console.error('サーバーエラー:', error)
-    res.status(500).json({ error: error.message })
+    logError('分析サーバーエラー', error)
+    res.status(500).json({ error: GENERIC_SERVER_ERROR })
   }
 }

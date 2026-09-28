@@ -1,16 +1,22 @@
 import { handlePreflightAndValidation, callGemini, extractImage } from '../_lib/gemini.js'
+import { validateImage, getClientIp, friendlyUpstreamError, GENERIC_SERVER_ERROR, logError } from '../_lib/security.js'
+import { tryConsume, LIMIT_MESSAGES } from '../_lib/ratelimit.js'
 
 export default async function handler(req, res) {
   if (handlePreflightAndValidation(req, res)) return
 
   try {
-    const { imageBase64 } = req.body
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: '画像データが必要です' })
+    const image = validateImage(req.body.imageBase64)
+    if (!image.ok) {
+      return res.status(image.status).json({ error: image.error })
     }
+    const base64Data = image.data
 
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    // 画像生成（Flash）として数える
+    const limit = await tryConsume({ tier: 'flash', ip: getClientIp(req), ipBucket: 'image' })
+    if (!limit.ok) {
+      return res.status(429).json({ error: LIMIT_MESSAGES[limit.reason], code: 'DAILY_LIMIT' })
+    }
 
     const inpaintPrompt = `Clean up this room. Remove all clutter and mess from the floor and surfaces. Keep furniture in place. Restore the original floor and wall textures where items are removed.`
 
@@ -19,7 +25,7 @@ export default async function handler(req, res) {
         {
           parts: [
             { text: inpaintPrompt },
-            { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+            { inlineData: { mimeType: image.mimeType, data: base64Data } },
           ],
         },
       ],
@@ -30,10 +36,9 @@ export default async function handler(req, res) {
     })
 
     if (!response.ok) {
-      const errorData = await response.json()
-      return res.status(response.status).json({
-        error: errorData.error?.message || 'Gemini Inpainting API エラー',
-      })
+      console.error(`Inpainting Gemini API エラー: HTTP ${response.status}`)
+      const f = friendlyUpstreamError(response.status)
+      return res.status(f.status).json({ error: f.error })
     }
 
     const data = await response.json()
@@ -49,7 +54,7 @@ export default async function handler(req, res) {
       imageUrl: `data:image/png;base64,${generatedImageBase64}`,
     })
   } catch (error) {
-    console.error('Gemini Inpainting サーバーエラー:', error)
-    res.status(500).json({ error: error.message })
+    logError('Inpainting サーバーエラー', error)
+    res.status(500).json({ error: GENERIC_SERVER_ERROR })
   }
 }
