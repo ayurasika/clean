@@ -101,7 +101,7 @@ Verdict guide:
 IMPORTANT: Be a strict inspector. It is better to FAIL a mediocre result than to PASS something that doesn't look dramatically cleaner.`
 
   try {
-    const response = await callGemini('gemini-2.0-flash', {
+    const response = await callGemini('gemini-3.8-flash', {
       contents: [
         {
           parts: [

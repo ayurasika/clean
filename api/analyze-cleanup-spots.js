@@ -161,7 +161,7 @@ export default async function handler(req, res) {
 
     // マイクロタスク分析（429エラー時リトライ機能付き）
     const makeRequest = async (retryCount = 0) => {
-      const response = await callGemini('gemini-2.0-flash', {
+      const response = await callGemini('gemini-3.8-flash', {
         systemInstruction: {
           parts: [{ text: systemInstruction }]
         },

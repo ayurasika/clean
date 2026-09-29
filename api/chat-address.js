@@ -14,7 +14,7 @@ import {
 import { tryConsume, LIMIT_MESSAGES } from './_lib/ratelimit.js'
 
 // モデル名・システムプロンプト・出力トークン数はサーバー側で固定（クライアントから変更できない）
-const CHAT_MODEL = 'gemini-2.0-flash'
+const CHAT_MODEL = 'gemini-3.8-flash'
 const MAX_OUTPUT_TOKENS = 300
 
 export default async function handler(req, res) {

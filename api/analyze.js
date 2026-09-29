@@ -58,7 +58,7 @@ export default async function handler(req, res) {
   "zones": ["認識した全エリアのリスト"]
 }`
 
-    const response = await callGemini('gemini-2.0-flash', {
+    const response = await callGemini('gemini-3.8-flash', {
       contents: [
         {
           parts: [

@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       }
       const analysisPrompt = createAnalysisPrompt()
 
-      const analysisResponse = await callGemini('gemini-2.0-flash', {
+      const analysisResponse = await callGemini('gemini-3.8-flash', {
         contents: [
           {
             parts: [
