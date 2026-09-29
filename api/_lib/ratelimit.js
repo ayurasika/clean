@@ -19,11 +19,14 @@ function intEnv(name, fallback) {
   return Number.isFinite(v) && v >= 0 ? v : fallback
 }
 
+// 確認用URL（Vercel の preview。Vercel のログインが必要で本人しか入れない）は試す回数が多いので、初期値を大きくする
+const IS_PREVIEW = process.env.VERCEL_ENV === 'preview'
+
 // 全体（1日あたり）の上限 … 以前の server.js と同じ値を初期値にしている
 export function getGlobalLimits() {
   return {
     flash: intEnv('LIMIT_FLASH_PER_DAY', 50), // 画像生成（Flash）
-    pro: intEnv('LIMIT_PRO_PER_DAY', 10), // 画像生成（Pro・高画質）
+    pro: intEnv('LIMIT_PRO_PER_DAY', IS_PREVIEW ? 30 : 10), // 画像生成（Pro・高画質）
     inspection: intEnv('LIMIT_INSPECTION_PER_DAY', 100), // 生成画像の検品
     retry: intEnv('LIMIT_RETRY_PER_DAY', 50), // 検品NG時の作り直し
     text: intEnv('LIMIT_TEXT_PER_DAY', 300), // 文章系（分析・住所相談チャット）
@@ -33,8 +36,8 @@ export function getGlobalLimits() {
 // 1つの IP あたり（1日あたり）の上限
 export function getIpLimits() {
   return {
-    image: intEnv('LIMIT_IP_IMAGE_PER_DAY', 5), // 未来予想図の生成（Flash+Pro 合算）
-    text: intEnv('LIMIT_IP_TEXT_PER_DAY', 40), // 分析・チャット
+    image: intEnv('LIMIT_IP_IMAGE_PER_DAY', IS_PREVIEW ? 30 : 5), // 未来予想図の生成（Flash+Pro 合算）
+    text: intEnv('LIMIT_IP_TEXT_PER_DAY', IS_PREVIEW ? 200 : 40), // 分析・チャット
   }
 }
 
