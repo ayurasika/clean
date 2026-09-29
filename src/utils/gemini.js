@@ -58,7 +58,7 @@ function toFailure(error) {
  * @param {boolean} highQuality - 高画質モード（Proモデル使用）
  * @returns {Promise<Object>} 生成された画像情報
  */
-export async function generateFutureVision(imageBase64, isRegenerate = false, highQuality = false) {
+export async function generateFutureVision(imageBase64, isRegenerate = false, highQuality = false, compareModel = null) {
   try {
     const response = await fetch(`${API_BASE_URL}/api/gemini/edit-image`, {
       method: 'POST',
@@ -69,6 +69,7 @@ export async function generateFutureVision(imageBase64, isRegenerate = false, hi
         imageBase64: imageBase64,
         editType: isRegenerate ? 'future_vision_stronger' : 'future_vision',
         highQuality: highQuality,
+        ...(compareModel ? { compareModel } : {}),
       }),
     })
 
@@ -80,6 +81,7 @@ export async function generateFutureVision(imageBase64, isRegenerate = false, hi
       imageUrl: data.imageUrl,
       imageBase64: data.imageBase64,
       model: data.model,
+      compareModel: data.compareModel || null,
       usage: data.usage,
     }
   } catch (error) {

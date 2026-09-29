@@ -168,6 +168,25 @@ const isReturnToPlaceTask = (action) => {
 
 // 高画質モード（常にON）
 const highQualityMode = ref(true)
+
+// 比較モード（確認用URLとローカルだけ表示。本番URLでは出さない）
+const PRODUCTION_HOST = 'clean-rosy.vercel.app'
+const compareMode = typeof window !== 'undefined' && window.location.hostname !== PRODUCTION_HOST
+const COMPARE_OPTIONS = [
+  { key: 'pro', label: 'Pro', price: '約20円' },
+  { key: 'flash', label: 'Flash', price: '約10円' },
+  { key: 'lite', label: 'Lite', price: '約5円' },
+]
+const compareModel = ref('pro')
+const compareResults = ref([])
+const compareLabel = (key) => {
+  const o = COMPARE_OPTIONS.find(x => x.key === key)
+  return o ? `${o.label}（${o.price}）` : ''
+}
+const generateWithModel = async (key) => {
+  compareModel.value = key
+  await generateFutureImage()
+}
 const usageStatus = ref({ flash: { used: 0, limit: 50 }, pro: { used: 0, limit: 10 } })
 // この端末（IP）の今日の残り回数
 const myUsage = ref(null)
@@ -316,9 +335,12 @@ const generateFutureImage = async () => {
   try {
     // Gemini に撮影した画像を渡して、片付いた状態に変換
     // 高画質モードが有効な場合はProモデルを使用
-    const result = await generateFutureVision(capturedImage.value, false, highQualityMode.value)
+    const result = await generateFutureVision(capturedImage.value, false, highQualityMode.value, compareMode ? compareModel.value : null)
 
     if (result.success) {
+      if (compareMode) {
+        compareResults.value.push({ key: result.compareModel || compareModel.value, model: result.model, url: result.imageUrl })
+      }
       futureVisionUrl.value = result.imageUrl
       roomStore.setFutureVisionUrl(result.imageUrl)
       currentPhase.value = 'vision'
@@ -675,6 +697,16 @@ onUnmounted(() => {
           <p class="text-center text-white/30 text-[10px] mt-1 tracking-wide">
             <template v-if="myUsage && myUsage.image">今日あと {{ Math.max(0, myUsage.image.limit - myUsage.image.used) }} 回 ・ </template>Pro モデル（残り {{ Math.max(0, usageStatus.pro.limit - usageStatus.pro.used) }} 回）
           </p>
+          <div v-if="compareMode" class="mt-4 flex justify-center gap-2">
+            <button
+              v-for="o in COMPARE_OPTIONS"
+              :key="o.key"
+              @click="compareModel = o.key"
+              class="rounded-full px-3 py-1 text-[11px] border"
+              :class="compareModel === o.key ? 'bg-white text-black border-white' : 'text-white/70 border-white/30'"
+            >{{ o.label }} {{ o.price }}</button>
+          </div>
+          <p v-if="compareMode" class="text-center text-white/40 text-[10px] mt-1">比較モード（確認用URLだけ）</p>
           <p class="text-center text-white/40 text-[10px] mt-3 leading-relaxed tracking-wide">
             写真は分析のため Google Gemini（AI）に送信されます。<br />このアプリでは写真を保存しません。
           </p>
@@ -910,6 +942,30 @@ onUnmounted(() => {
             <div class="absolute top-3 right-3 bg-black/20 backdrop-blur-md text-white text-[10px] px-3 py-1 rounded-full font-light tracking-widest uppercase">
               After
             </div>
+          </div>
+        </div>
+
+        <!-- 比較モード：同じ写真で別のモデルを試す -->
+        <div v-if="compareMode" class="px-6 pb-4">
+          <p class="text-[11px] text-text-sub mb-2 tracking-wide">比較モード：同じ写真で別のモデルを試す（押すたびに1枚分かかります）</p>
+          <div class="flex gap-2 mb-3">
+            <button
+              v-for="o in COMPARE_OPTIONS"
+              :key="o.key"
+              @click="generateWithModel(o.key)"
+              class="flex-1 rounded-full py-2 text-[12px] bg-white border border-sage/40 text-text-main"
+            >{{ o.label }}<br /><span class="text-[10px] text-text-sub">{{ o.price }}</span></button>
+          </div>
+          <div v-if="compareResults.length" class="grid grid-cols-3 gap-2">
+            <button
+              v-for="(r, i) in compareResults"
+              :key="i"
+              @click="futureVisionUrl = r.url"
+              class="flex flex-col items-center gap-1"
+            >
+              <img :src="r.url" class="w-full aspect-square object-cover rounded-lg" :class="futureVisionUrl === r.url ? 'ring-2 ring-sage' : ''" />
+              <span class="text-[10px] text-text-sub">{{ compareLabel(r.key) }}</span>
+            </button>
           </div>
         </div>
 

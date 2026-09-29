@@ -12,6 +12,16 @@ export default async function handler(req, res) {
 
   try {
     const { highQuality } = req.body
+    // 比較モード：確認用URL（Vercel の preview）とローカルだけで有効。本番では無視する
+    const COMPARE_MODELS = {
+      pro: 'gemini-3-pro-image-preview',
+      flash: 'gemini-3.1-flash-image',
+      lite: 'gemini-3.1-flash-lite-image',
+    }
+    const compareAllowed = process.env.VERCEL_ENV !== 'production'
+    const compareModel = compareAllowed && Object.hasOwn(COMPARE_MODELS, req.body.compareModel)
+      ? req.body.compareModel
+      : null
     const editType = ALLOWED_EDIT_TYPES.includes(req.body.editType) ? req.body.editType : 'future_vision'
 
     const image = validateImage(req.body.imageBase64)
@@ -29,7 +39,8 @@ export default async function handler(req, res) {
       return res.status(429).json({ error: LIMIT_MESSAGES.ip, code: 'DAILY_LIMIT' })
     }
     let modelTier = null
-    if (highQuality === true && (await tryConsume({ tier: 'pro' })).ok) {
+    const wantPro = compareModel ? compareModel === 'pro' : highQuality === true
+    if (wantPro && (await tryConsume({ tier: 'pro' })).ok) {
       modelTier = 'pro'
     } else if ((await tryConsume({ tier: 'flash' })).ok) {
       modelTier = 'flash'
@@ -191,9 +202,11 @@ ${editPrompt}`
         temperature = editType === 'future_vision_stronger' ? 0.8 : 0.65
       }
 
-      const modelName = useProModel
-        ? 'gemini-3-pro-image-preview'
-        : 'gemini-3.1-flash-image'
+      const modelName = compareModel
+        ? COMPARE_MODELS[compareModel]
+        : useProModel
+          ? 'gemini-3-pro-image-preview'
+          : 'gemini-3.1-flash-image'
 
       console.log(`画像生成 試行${attemptNumber} - モデル: ${modelName}, temp: ${temperature}`)
 
@@ -218,7 +231,9 @@ ${editPrompt}`
     // 503エラー対策: リトライ + フォールバック
     let response = await generateImage(null, 1)
     let usedFallbackModel = false
-    let actualModelUsed = useProModel ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image'
+    let actualModelUsed = compareModel
+      ? COMPARE_MODELS[compareModel]
+      : useProModel ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image'
 
     if (response.status === 503) {
       for (let retryCount = 1; retryCount <= 2; retryCount++) {
@@ -285,7 +300,7 @@ ${editPrompt}`
 
     const retryModelTier = modelTier // generateImage() は最初に選んだモデルで作り直す
     let canRetry = false
-    if (inspectionResult?.verdict === 'FAIL' && (await tryConsume({ tier: 'retry' })).ok) {
+    if (!compareModel && inspectionResult?.verdict === 'FAIL' && (await tryConsume({ tier: 'retry' })).ok) {
       if ((await tryConsume({ tier: retryModelTier })).ok) {
         canRetry = true
       } else {
@@ -317,6 +332,7 @@ ${editPrompt}`
       imageBase64: finalImageBase64,
       imageUrl: `data:image/png;base64,${finalImageBase64}`,
       model: actualModelUsed,
+      compareModel,
       usedFallback: usedFallbackModel,
       fallbackReason: usedFallbackModel ? 'Gemini 3 Proが混雑していたため、2.5 Flashで生成しました' : null,
       usage: (await getUsage(ip)).usage,
