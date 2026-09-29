@@ -193,7 +193,7 @@ ${editPrompt}`
 
       const modelName = useProModel
         ? 'gemini-3-pro-image-preview'
-        : 'gemini-2.5-flash-image'
+        : 'gemini-3.1-flash-image'
 
       console.log(`画像生成 試行${attemptNumber} - モデル: ${modelName}, temp: ${temperature}`)
 
@@ -218,7 +218,7 @@ ${editPrompt}`
     // 503エラー対策: リトライ + フォールバック
     let response = await generateImage(null, 1)
     let usedFallbackModel = false
-    let actualModelUsed = useProModel ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image'
+    let actualModelUsed = useProModel ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image'
 
     if (response.status === 503) {
       for (let retryCount = 1; retryCount <= 2; retryCount++) {
@@ -230,7 +230,7 @@ ${editPrompt}`
 
       if (response.status === 503 && useProModel && (await tryConsume({ tier: 'flash' })).ok) {
         console.log('🔄 Flashにフォールバック')
-        const fallbackResponse = await callGemini('gemini-2.5-flash-image', {
+        const fallbackResponse = await callGemini('gemini-3.1-flash-image', {
           contents: [
             {
               parts: [
@@ -248,7 +248,7 @@ ${editPrompt}`
         if (fallbackResponse.ok) {
           response = fallbackResponse
           usedFallbackModel = true
-          actualModelUsed = 'gemini-2.5-flash-image'
+          actualModelUsed = 'gemini-3.1-flash-image'
           await refundGlobal('pro') // Pro は使われなかった
         } else {
           await refundGlobal('flash')

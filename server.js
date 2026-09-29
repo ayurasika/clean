@@ -1025,10 +1025,10 @@ ${editPrompt}`
 
       // 【v3.2】モデル選択 - 高画質モードで Gemini 3 Pro Image を使用
       // - 高画質モード ON:  gemini-3-pro-image-preview（最高品質、Thinking対応）
-      // - 高画質モード OFF: gemini-2.5-flash-image（高速、効率的）
+      // - 高画質モード OFF: gemini-3.1-flash-image（高速、効率的）
       const modelName = useProModel
         ? 'gemini-3-pro-image-preview'
-        : 'gemini-2.5-flash-image'
+        : 'gemini-3.1-flash-image'
 
       console.log(`\n=== 画像編集リクエスト (試行 ${attemptNumber}) ===`)
       console.log('モデル:', modelName, useProModel ? '(Pro/高画質)' : '(Flash/通常)')
@@ -1081,7 +1081,7 @@ ${editPrompt}`
     // ============================================================
     let response = await generateImage(null, 1)
     let usedFallbackModel = false
-    let actualModelUsed = useProModel ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image'
+    let actualModelUsed = useProModel ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image'
 
     // 503エラー（モデル過負荷）の場合、リトライまたはフォールバック
     if (response.status === 503) {
@@ -1111,7 +1111,7 @@ ${editPrompt}`
       if (response.status === 503 && useProModel) {
         console.log('\n🔄 === Gemini 2.5 Flash にフォールバック ===')
 
-        const fallbackModelName = 'gemini-2.5-flash-image'
+        const fallbackModelName = 'gemini-3.1-flash-image'
         const fallbackResponse = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModelName}:generateContent?key=${GEMINI_API_KEY}`,
           {
@@ -1323,7 +1323,7 @@ ${editPrompt}`
         inspectionResult: inspectionResult || { message: '検品未実施' },
         didRetry,
         usedFallbackModel,
-        originalModelRequested: useProModel ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image',
+        originalModelRequested: useProModel ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image',
         actualModelUsed,
       }
     })
@@ -1349,7 +1349,7 @@ app.post('/api/gemini/inpaint', requireGeminiApiKey, async (req, res) => {
     const inpaintPrompt = `Clean up this room. Remove all clutter and mess from the floor and surfaces. Keep furniture in place. Restore the original floor and wall textures where items are removed.`
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {

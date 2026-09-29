@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
     const inpaintPrompt = `Clean up this room. Remove all clutter and mess from the floor and surfaces. Keep furniture in place. Restore the original floor and wall textures where items are removed.`
 
-    const response = await callGemini('gemini-2.5-flash-image', {
+    const response = await callGemini('gemini-3.1-flash-image', {
       contents: [
         {
           parts: [
