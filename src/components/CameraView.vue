@@ -45,6 +45,9 @@ const deferItem = (index) => {
 // 後回しボックスの表示状態
 const showDeferredBox = ref(false)
 
+// Housework App連携
+const HOUSEWORK_APP_URL = import.meta.env.VITE_HOUSEWORK_URL || 'https://ayurasika.github.io/housework-app/'
+
 // チャット関連の状態
 const selectedDeferredItem = ref(null) // { item, category, index }
 const chatMessages = ref([]) // [{ role: 'user'|'ai', text }]
@@ -149,6 +152,32 @@ const closeChatWithoutDecision = () => {
 // 所定の場所に戻すタスクかどうか判定
 const isReturnToPlaceTask = (action) => {
   return action && action.includes('所定の場所に戻す')
+}
+
+// Housework Appへ遷移
+const handoffToHouseworkApp = () => {
+  // cleanupSpotsから最大8個のactionを抽出（空でないもののみ）
+  const tasks = cleanupSpots.value
+    .map(spot => spot.action)
+    .filter(action => action && action.trim() !== '')
+    .slice(0, 8)
+
+  if (tasks.length === 0) {
+    return
+  }
+
+  // ペイロード構築
+  const payload = {
+    v: 1,
+    source: 'clean',
+    tasks: tasks
+  }
+
+  // URL生成
+  const url = `${HOUSEWORK_APP_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`
+
+  // 同一タブで遷移
+  window.location.href = url
 }
 
 // 高画質モード（常にON）
@@ -1149,6 +1178,17 @@ onUnmounted(() => {
               class="w-full py-4 rounded-full bg-amber-500 text-white text-sm tracking-[0.2em] font-light soft-shadow transition-transform active:scale-[0.98]"
             >
               後回しボックスを開く
+            </button>
+            <!-- Housework App連携ボタン -->
+            <button
+              v-else-if="cleanupSpots.length > 0"
+              @click="handoffToHouseworkApp"
+              class="w-full py-4 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-sm tracking-wide font-medium soft-shadow transition-transform active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>1タスク集中でやる</span>
             </button>
             <div v-else class="flex gap-3">
               <span class="flex-1 text-center text-text-light text-xs font-light py-3">
